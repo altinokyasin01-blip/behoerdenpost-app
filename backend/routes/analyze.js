@@ -31,6 +31,9 @@ router.post("/", upload.single("document"), async (req, res, next) => {
     }
 
     const base64 = req.file.buffer.toString("base64");
+    console.log('File size:', req.file.size, 'bytes');
+    console.log('Mimetype:', req.file.mimetype);
+    console.log('Base64 length:', base64.length);
     const result = await analyzeDocument(base64, req.file.mimetype);
     res.json(result);
   } catch (err) {
