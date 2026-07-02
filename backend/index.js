@@ -16,6 +16,12 @@ app.get("/api/health", (_req, res) => {
   res.json({ status: "ok" });
 });
 
+app.use('/api/analyze', (req, res, next) => {
+  console.log('Request headers:', JSON.stringify(req.headers));
+  console.log('Content-Type:', req.headers['content-type']);
+  next();
+});
+
 app.use("/api/analyze", analyzeRouter);
 
 app.use((err, _req, res, _next) => {
