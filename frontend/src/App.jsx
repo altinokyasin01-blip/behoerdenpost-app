@@ -15,13 +15,116 @@ const FILE_INDEX_MAX_FILES = 50;
 const FILE_INDEX_MAX_TEXT = 5000;
 
 const EXT_TEXT_PLAIN = new Set([".txt", ".md"]);
-const EXT_VISION = new Set([".pdf", ".jpg", ".jpeg", ".png"]);
-const EXT_MIME = {
-  ".pdf": "application/pdf",
-  ".jpg": "image/jpeg",
-  ".jpeg": "image/jpeg",
-  ".png": "image/png",
-};
+const EXT_PDF = new Set([".pdf"]);
+const EXT_IMAGE = new Set([".jpg", ".jpeg", ".png", ".webp"]);
+const IMAGE_MAX_BYTES = 2 * 1024 * 1024;
+const PDF_MAX_PAGES = 20;
+
+const PDFJS_URL = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+const PDFJS_WORKER_URL = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+const TESSERACT_URL = "https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.0.5/tesseract.min.js";
+
+function isSupportedFileExt(ext) {
+  return EXT_TEXT_PLAIN.has(ext) || EXT_PDF.has(ext) || EXT_IMAGE.has(ext);
+}
+
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const existing = document.querySelector(`script[data-cdn-src="${src}"]`);
+    if (existing) {
+      if (existing.dataset.loaded === "1") {
+        resolve();
+        return;
+      }
+      existing.addEventListener("load", () => resolve());
+      existing.addEventListener("error", () =>
+        reject(new Error(`Failed to load ${src}`))
+      );
+      return;
+    }
+    const s = document.createElement("script");
+    s.src = src;
+    s.async = true;
+    s.dataset.cdnSrc = src;
+    s.addEventListener("load", () => {
+      s.dataset.loaded = "1";
+      resolve();
+    });
+    s.addEventListener("error", () =>
+      reject(new Error(`Failed to load ${src}`))
+    );
+    document.head.appendChild(s);
+  });
+}
+
+let pdfJsPromise = null;
+function getPdfJs() {
+  if (!pdfJsPromise) {
+    pdfJsPromise = (async () => {
+      await loadScript(PDFJS_URL);
+      const lib = window.pdfjsLib;
+      if (!lib) throw new Error("pdf.js not available");
+      lib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_URL;
+      return lib;
+    })().catch((e) => {
+      pdfJsPromise = null;
+      throw e;
+    });
+  }
+  return pdfJsPromise;
+}
+
+let tesseractPromise = null;
+function getTesseract() {
+  if (!tesseractPromise) {
+    tesseractPromise = (async () => {
+      await loadScript(TESSERACT_URL);
+      const T = window.Tesseract;
+      if (!T) throw new Error("Tesseract not available");
+      return T;
+    })().catch((e) => {
+      tesseractPromise = null;
+      throw e;
+    });
+  }
+  return tesseractPromise;
+}
+
+let ocrWorkerPromise = null;
+function getOcrWorker() {
+  if (!ocrWorkerPromise) {
+    ocrWorkerPromise = (async () => {
+      const T = await getTesseract();
+      return T.createWorker("deu+eng");
+    })().catch((e) => {
+      ocrWorkerPromise = null;
+      throw e;
+    });
+  }
+  return ocrWorkerPromise;
+}
+
+async function extractPdfLocal(file) {
+  const lib = await getPdfJs();
+  const buf = await file.arrayBuffer();
+  const doc = await lib.getDocument({ data: buf }).promise;
+  const parts = [];
+  const pages = Math.min(doc.numPages, PDF_MAX_PAGES);
+  for (let i = 1; i <= pages; i++) {
+    const page = await doc.getPage(i);
+    const content = await page.getTextContent();
+    parts.push(content.items.map((it) => it.str).join(" "));
+    page.cleanup?.();
+  }
+  await doc.destroy?.();
+  return parts.join("\n\n").trim();
+}
+
+async function extractImageOcr(file) {
+  const worker = await getOcrWorker();
+  const { data } = await worker.recognize(file);
+  return (data.text || "").trim();
+}
 
 const FS_SUPPORTED = typeof window !== "undefined" && "showDirectoryPicker" in window;
 
@@ -93,39 +196,33 @@ async function* walkFolder(handle, prefix = "") {
   }
 }
 
-async function extractViaBackend(apiBase, file, ext) {
-  const mime = EXT_MIME[ext] || file.type || "application/octet-stream";
-  const blob = file.type ? file : new Blob([file], { type: mime });
-  const fd = new FormData();
-  fd.append("document", blob, file.name);
-  const res = await fetch(`${apiBase}/api/extract`, {
-    method: "POST",
-    body: fd,
-  });
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw new Error(data.error || `HTTP ${res.status}`);
-  }
-  const data = await res.json();
-  return typeof data.text === "string" ? data.text : "";
-}
-
-async function readFileText(fileHandle, ext, apiBase) {
+async function readFileText(fileHandle, ext) {
   const file = await fileHandle.getFile();
   let text = "";
+  let skipped = false;
+  let skipReason = null;
   try {
     if (EXT_TEXT_PLAIN.has(ext)) {
       text = await file.text();
-    } else if (EXT_VISION.has(ext)) {
-      text = await extractViaBackend(apiBase, file, ext);
+    } else if (EXT_PDF.has(ext)) {
+      text = await extractPdfLocal(file);
+    } else if (EXT_IMAGE.has(ext)) {
+      if (file.size > IMAGE_MAX_BYTES) {
+        skipped = true;
+        skipReason = "size";
+      } else {
+        text = await extractImageOcr(file);
+      }
     }
   } catch {
-    text = "";
+    // extraction failed — keep entry with empty text
   }
   return {
     size: file.size,
     lastModified: file.lastModified,
     text: text.slice(0, FILE_INDEX_MAX_TEXT),
+    skipped,
+    skipReason,
   };
 }
 
@@ -133,20 +230,20 @@ async function collectFolderFiles(handle) {
   const files = [];
   for await (const entry of walkFolder(handle)) {
     const ext = fileExt(entry.name);
-    if (!EXT_TEXT_PLAIN.has(ext) && !EXT_VISION.has(ext)) continue;
+    if (!isSupportedFileExt(ext)) continue;
     files.push({ ...entry, ext });
     if (files.length >= FILE_INDEX_MAX_FILES) break;
   }
   return files;
 }
 
-async function indexFolderFully(handle, apiBase, onProgress) {
+async function indexFolderFully(handle, onProgress) {
   const found = await collectFolderFiles(handle);
   const files = [];
   for (let i = 0; i < found.length; i++) {
     const f = found[i];
     onProgress?.({ current: i + 1, total: found.length, name: f.name });
-    const info = await readFileText(f.handle, f.ext, apiBase);
+    const info = await readFileText(f.handle, f.ext);
     files.push({
       id: `${f.path}#${info.lastModified}`,
       path: f.path,
@@ -154,30 +251,30 @@ async function indexFolderFully(handle, apiBase, onProgress) {
       size: info.size,
       lastModified: info.lastModified,
       text: info.text,
+      skipped: info.skipped,
+      skipReason: info.skipReason,
     });
   }
   return files;
 }
 
-async function syncFolderIncremental(handle, existingFiles, apiBase, onProgress) {
+async function syncFolderIncremental(handle, existingFiles, onProgress) {
   const found = await collectFolderFiles(handle);
   const existing = new Map(existingFiles.map((f) => [f.path, f]));
-  const seen = new Set();
   const result = [];
-  let processed = 0;
-  let total = 0;
   const stats = await Promise.all(
     found.map(async (f) => {
       const file = await f.handle.getFile();
       return { f, size: file.size, lastModified: file.lastModified };
     })
   );
+  let total = 0;
   for (const s of stats) {
     const prev = existing.get(s.f.path);
     if (!prev || prev.lastModified !== s.lastModified) total += 1;
   }
+  let processed = 0;
   for (const s of stats) {
-    seen.add(s.f.path);
     const prev = existing.get(s.f.path);
     if (prev && prev.lastModified === s.lastModified) {
       result.push(prev);
@@ -185,7 +282,7 @@ async function syncFolderIncremental(handle, existingFiles, apiBase, onProgress)
     }
     processed += 1;
     onProgress?.({ current: processed, total, name: s.f.name });
-    const info = await readFileText(s.f.handle, s.f.ext, apiBase);
+    const info = await readFileText(s.f.handle, s.f.ext);
     result.push({
       id: `${s.f.path}#${info.lastModified}`,
       path: s.f.path,
@@ -193,6 +290,8 @@ async function syncFolderIncremental(handle, existingFiles, apiBase, onProgress)
       size: info.size,
       lastModified: info.lastModified,
       text: info.text,
+      skipped: info.skipped,
+      skipReason: info.skipReason,
     });
   }
   const changed = total > 0 || result.length !== existingFiles.length;
@@ -2550,10 +2649,15 @@ function SettingsView({
         <>
           <h2 className="section-title">Lokale Dateien</h2>
           <p className="settings-text">
-            Gib einen Ordner frei — Büro liest die Dateien darin, extrahiert
-            per Claude den Text aus PDFs und Bildern, und macht alles über die
-            Schnellsuche auffindbar. Max. {FILE_INDEX_MAX_FILES} Dateien pro Ordner.
-            Text- und Markdown-Dateien werden ohne API gelesen.
+            Gib einen Ordner frei — Büro liest die Dateien darin lokal im
+            Browser aus und macht alles über die Schnellsuche auffindbar.
+            PDFs werden per PDF.js, Bilder per Tesseract-OCR (Deutsch + Englisch)
+            verarbeitet. Nichts verlässt dein Gerät.
+          </p>
+          <p className="settings-text">
+            Max. {FILE_INDEX_MAX_FILES} Dateien pro Ordner. Bilder über 2 MB
+            werden übersprungen (OCR wäre zu langsam). Erst OCR ist zäh —
+            Tesseract lädt beim ersten Bild ~15 MB Sprachdaten aus dem Cache.
           </p>
 
           <div className="settings-actions">
@@ -2590,6 +2694,7 @@ function SettingsView({
             {folders.map((f) => {
               const status = folderStatus[f.id] || "unknown";
               const stale = status === "stale" || status === "missing";
+              const skippedCount = f.files.filter((x) => x.skipped).length;
               return (
                 <div key={f.id} className="card folder-card">
                   <div className="folder-body">
@@ -2604,6 +2709,8 @@ function SettingsView({
                     </div>
                     <div className="folder-meta">
                       {f.files.length} Datei{f.files.length === 1 ? "" : "en"}
+                      {skippedCount > 0 &&
+                        ` · ${skippedCount} übersprungen (Bild > 2 MB)`}
                       {f.indexedAt && ` · zuletzt indiziert ${formatDate(f.indexedAt)}`}
                     </div>
                   </div>
@@ -3577,7 +3684,6 @@ export default function App() {
           const { files, changed } = await syncFolderIncremental(
             handle,
             folder.files,
-            API_BASE,
             null
           );
           if (cancelled) return;
@@ -3828,7 +3934,7 @@ export default function App() {
     }
     setIndexing({ active: true, current: 0, total: 0, name: handle.name });
     try {
-      const files = await indexFolderFully(handle, API_BASE, (p) =>
+      const files = await indexFolderFully(handle, (p) =>
         setIndexing({ active: true, ...p })
       );
       const folder = {
@@ -3885,7 +3991,6 @@ export default function App() {
       const { files } = await syncFolderIncremental(
         handle,
         folder ? folder.files : [],
-        API_BASE,
         (p) => setIndexing({ active: true, ...p })
       );
       setFileIndex((prev) => ({
