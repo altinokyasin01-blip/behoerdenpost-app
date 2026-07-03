@@ -5,6 +5,8 @@ const cors = require("cors");
 const analyzeRouter = require("./routes/analyze");
 const appealRouter = require("./routes/appeal");
 const extractRouter = require("./routes/extract");
+const qrRouter = require("./routes/qr");
+const templateRouter = require("./routes/template");
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -27,6 +29,8 @@ app.use('/api/analyze', (req, res, next) => {
 app.use("/api/analyze", analyzeRouter);
 app.use("/api/appeal", appealRouter);
 app.use("/api/extract", extractRouter);
+app.use("/api/qr", qrRouter);
+app.use("/api/template", templateRouter);
 
 app.use((err, _req, res, _next) => {
   console.error(err);

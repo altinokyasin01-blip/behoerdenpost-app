@@ -336,4 +336,196 @@ async function extractText(base64, mimeType) {
   return text;
 }
 
-module.exports = { analyzeDocument, analyzeAppeal, extractText };
+const QR_SYSTEM_PROMPT = `Du analysierst den Textinhalt eines QR-Codes oder Barcodes.
+Häufigste Fälle im deutschen Kontext: SEPA-Überweisung (EPC-QR beginnt mit "BCD\\n"),
+URL (http/https), vCard (BEGIN:VCARD), WLAN-Zugang (WIFI:), reiner Text.
+
+Antworte AUSSCHLIESSLICH mit JSON in exakt diesem Schema (keine Codeblöcke,
+kein Fließtext davor/danach):
+
+{
+  "documentType": "SEPA-Überweisung | Link | Kontakt | WLAN | Text | ...",
+  "category": "Genau EINER dieser Werte: ${ALLOWED_CATEGORIES.join(", ")}",
+  "sender": "Bei SEPA: Zahlungsempfänger. Bei vCard: Name. Sonst null.",
+  "amount": "Bei SEPA: Zahl in Euro (Punkt als Dezimaltrennzeichen). Sonst null.",
+  "summary": "1-2 Sätze in einfacher Sprache, was der Nutzer damit tun kann",
+  "deadline": null,
+  "deadlineType": null,
+  "replyDraft": null,
+  "actions": [ Actions wie im Post-Scan-Flow ]
+}
+
+SEPA/EPC-Regeln:
+- Header ist "BCD" gefolgt von Zeilenumbrüchen. Reihenfolge der Zeilen ab Zeile 5:
+  BIC, Empfängername, IBAN, Betrag (Format "EUR230.00"), Purpose-Code, Referenz, Verwendungszweck.
+- Erzeuge diese Actions:
+  * "amount" mit dem Betrag als Zahl (high priority)
+  * "contact" mit dem Empfängernamen (medium priority)
+  * "note" mit dem Verwendungszweck (medium priority)
+
+URL-Regeln:
+- Erzeuge eine "note"-Action mit der URL im value und Label "Link öffnen: ...".
+
+vCard-Regeln:
+- Erzeuge "contact"-Action mit dem Namen als value.
+
+WLAN-Regeln:
+- Erzeuge "note"-Action mit Netzwerknamen und Passwort im value.
+
+Text/Sonstiges:
+- Erzeuge "note"-Action mit dem gescannten Text.
+
+Erlaubte action.type-Werte und Semantik wie im normalen Doc-Analyse-Prompt:
+contact | reminder | amount | deadline | note | event.
+Sortierung nach priority (high | medium | low). Max 6 Einträge.`;
+
+async function analyzeQrContent(content) {
+  const response = await getClient().messages.create({
+    model: MODEL,
+    max_tokens: 1024,
+    system: QR_SYSTEM_PROMPT,
+    messages: [
+      {
+        role: "user",
+        content: `QR-Inhalt:\n\n${content}\n\nAntworte mit dem JSON.`,
+      },
+    ],
+  });
+
+  const text = response.content
+    .filter((block) => block.type === "text")
+    .map((block) => block.text)
+    .join("")
+    .trim();
+
+  const jsonStart = text.indexOf("{");
+  const jsonEnd = text.lastIndexOf("}");
+  if (jsonStart === -1 || jsonEnd === -1) {
+    throw new Error("Claude QR response did not contain JSON");
+  }
+  const parsed = JSON.parse(text.slice(jsonStart, jsonEnd + 1));
+  const category = ALLOWED_CATEGORIES.includes(parsed.category)
+    ? parsed.category
+    : "Sonstiges";
+  const amount =
+    typeof parsed.amount === "number" && !Number.isNaN(parsed.amount)
+      ? parsed.amount
+      : null;
+  return {
+    documentType: parsed.documentType ?? null,
+    category,
+    sender: parsed.sender ?? null,
+    amount,
+    summary: parsed.summary ?? null,
+    deadline: null,
+    deadlineType: null,
+    replyDraft: null,
+    qrContent: content,
+    actions: normalizeActions(parsed.actions),
+  };
+}
+
+const TEMPLATE_TYPES = new Set([
+  "kuendigung",
+  "widerspruch",
+  "zahlungserinnerung",
+  "nachfrage",
+  "akteneinsicht",
+  "beschwerde",
+  "vollmacht",
+  "datenschutzauskunft",
+]);
+
+const TEMPLATE_LABELS = {
+  kuendigung: "Kündigung",
+  widerspruch: "Widerspruch",
+  zahlungserinnerung: "Zahlungserinnerung",
+  nachfrage: "Nachfrage/Rückfrage",
+  akteneinsicht: "Antrag auf Akteneinsicht",
+  beschwerde: "Beschwerde",
+  vollmacht: "Vollmacht",
+  datenschutzauskunft: "Datenschutzauskunft (DSGVO Art. 15)",
+};
+
+const TEMPLATE_SYSTEM_PROMPT = `Du verfasst formelle deutsche Anschreiben.
+
+Regeln:
+- Höflicher, sachlicher Ton. "Sehr geehrte Damen und Herren," wenn kein Ansprechpartner bekannt ist.
+- Kein juristischer Übereifer, aber präzise. Nenne konkrete Punkte aus dem Kontext.
+- Wenn ein Referenzdokument gegeben ist, beziehe dich darauf (Aktenzeichen, Datum).
+- Schluss mit "Mit freundlichen Grüßen" und dem Absendernamen (falls angegeben, sonst "[Ihr Name]").
+- Kein Datumsstempel im Body (das setzt der Nutzer selbst).
+- Kein Absender-/Empfängerblock (der Nutzer druckt das auf Briefpapier).
+- Länge: 100-250 Wörter.
+
+Antworte AUSSCHLIESSLICH mit JSON:
+{
+  "subject": "Betreff des Schreibens",
+  "body": "Der Text ab Anrede. Absätze mit Leerzeilen getrennt."
+}`;
+
+async function generateTemplate({
+  templateType,
+  context,
+  senderName,
+  recipient,
+  linkedDoc,
+}) {
+  if (!TEMPLATE_TYPES.has(templateType)) {
+    throw new Error("Unknown template type");
+  }
+  const parts = [`Vorlagentyp: ${TEMPLATE_LABELS[templateType]}`];
+  if (senderName) parts.push(`Absender: ${senderName}`);
+  if (recipient) {
+    const line = [recipient.name, recipient.street, [recipient.zip, recipient.city].filter(Boolean).join(" ")]
+      .filter(Boolean)
+      .join(", ");
+    if (line) parts.push(`Empfänger: ${line}`);
+  }
+  if (linkedDoc) {
+    const line = [linkedDoc.title, linkedDoc.sender, linkedDoc.date, linkedDoc.summary]
+      .filter(Boolean)
+      .join(" | ");
+    parts.push(`Referenzdokument: ${line}`);
+  }
+  parts.push(`Kontext des Nutzers:\n${context || "(keiner)"}`);
+
+  const response = await getClient().messages.create({
+    model: MODEL,
+    max_tokens: 2048,
+    system: TEMPLATE_SYSTEM_PROMPT,
+    messages: [
+      {
+        role: "user",
+        content: parts.join("\n\n") + "\n\nErzeuge jetzt das Anschreiben als JSON.",
+      },
+    ],
+  });
+
+  const text = response.content
+    .filter((block) => block.type === "text")
+    .map((block) => block.text)
+    .join("")
+    .trim();
+
+  const jsonStart = text.indexOf("{");
+  const jsonEnd = text.lastIndexOf("}");
+  if (jsonStart === -1 || jsonEnd === -1) {
+    throw new Error("Claude template response did not contain JSON");
+  }
+  const parsed = JSON.parse(text.slice(jsonStart, jsonEnd + 1));
+  return {
+    subject: typeof parsed.subject === "string" ? parsed.subject.trim() : "",
+    body: typeof parsed.body === "string" ? parsed.body.trim() : "",
+    templateType,
+    templateLabel: TEMPLATE_LABELS[templateType],
+  };
+}
+
+module.exports = {
+  analyzeDocument,
+  analyzeAppeal,
+  extractText,
+  analyzeQrContent,
+  generateTemplate,
+};

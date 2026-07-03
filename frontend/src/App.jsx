@@ -26,6 +26,7 @@ const PDF_MAX_PAGES = 20;
 const PDFJS_URL = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
 const PDFJS_WORKER_URL = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
 const TESSERACT_URL = "https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.0.5/tesseract.min.js";
+const JSQR_URL = "https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js";
 
 function isSupportedFileExt(ext) {
   return EXT_TEXT_PLAIN.has(ext) || EXT_PDF.has(ext) || EXT_IMAGE.has(ext);
@@ -91,6 +92,22 @@ function getTesseract() {
     });
   }
   return tesseractPromise;
+}
+
+let jsQrPromise = null;
+function getJsQR() {
+  if (!jsQrPromise) {
+    jsQrPromise = (async () => {
+      await loadScript(JSQR_URL);
+      const fn = window.jsQR;
+      if (!fn) throw new Error("jsQR not available");
+      return fn;
+    })().catch((e) => {
+      jsQrPromise = null;
+      throw e;
+    });
+  }
+  return jsQrPromise;
 }
 
 let ocrWorkerPromise = null;
@@ -571,6 +588,32 @@ function IconFile({ size = 20 }) {
   );
 }
 
+function IconQr({ size = 20 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...svgProps}>
+      <rect x="3" y="3" width="7" height="7" />
+      <rect x="14" y="3" width="7" height="7" />
+      <rect x="3" y="14" width="7" height="7" />
+      <line x1="14" y1="14" x2="14" y2="21" />
+      <line x1="18" y1="14" x2="18" y2="17" />
+      <line x1="14" y1="18" x2="17" y2="18" />
+      <line x1="18" y1="21" x2="21" y2="21" />
+      <line x1="21" y1="18" x2="21" y2="14" />
+    </svg>
+  );
+}
+
+function IconTemplate({ size = 20 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...svgProps}>
+      <rect x="4" y="3" width="16" height="18" rx="2" />
+      <line x1="8" y1="8" x2="16" y2="8" />
+      <line x1="8" y1="12" x2="16" y2="12" />
+      <line x1="8" y1="16" x2="12" y2="16" />
+    </svg>
+  );
+}
+
 function IconSun({ size = 18 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" {...svgProps}>
@@ -628,11 +671,25 @@ const NAV_ITEMS = [
   { id: "home", label: "Home", Icon: IconHome },
   { id: "calendar", label: "Kalender", Icon: IconCalendar },
   { id: "scan", label: "Scan", Icon: IconScan },
+  { id: "templates", label: "Vorlagen", Icon: IconTemplate },
   { id: "categories", label: "Kategorien", Icon: IconGrid },
   { id: "contacts", label: "Kontakte", Icon: IconContacts },
   { id: "archive", label: "Archiv", Icon: IconArchive },
   { id: "settings", label: "Einstellungen", Icon: IconSettings },
 ];
+
+const TEMPLATE_TYPES = [
+  { id: "kuendigung", label: "Kündigung", desc: "Vertrag oder Abo kündigen" },
+  { id: "widerspruch", label: "Widerspruch", desc: "Bescheid oder Entscheidung widersprechen" },
+  { id: "zahlungserinnerung", label: "Zahlungserinnerung", desc: "Ausstehende Rechnung anmahnen" },
+  { id: "nachfrage", label: "Nachfrage", desc: "Rückfrage zu einem Vorgang" },
+  { id: "akteneinsicht", label: "Akteneinsicht", desc: "Zugang zu deiner Akte fordern" },
+  { id: "beschwerde", label: "Beschwerde", desc: "Formelle Beschwerde einreichen" },
+  { id: "vollmacht", label: "Vollmacht", desc: "Jemanden bevollmächtigen" },
+  { id: "datenschutzauskunft", label: "Datenschutzauskunft", desc: "Auskunft nach DSGVO Art. 15" },
+];
+
+const USER_NAME_KEY = "buero_user_name";
 
 const INITIAL_DOCS = [];
 
@@ -2083,6 +2140,355 @@ function SearchModal({
   );
 }
 
+function QrScannerModal({ onScanned, onCancel }) {
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
+  const streamRef = useRef(null);
+  const rafRef = useRef(null);
+  const [status, setStatus] = useState("Kamera wird gestartet…");
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    function stop() {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((t) => t.stop());
+        streamRef.current = null;
+      }
+    }
+
+    async function start() {
+      try {
+        const jsQR = await getJsQR();
+        if (cancelled) return;
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: "environment" } },
+          audio: false,
+        });
+        if (cancelled) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+        streamRef.current = stream;
+        const video = videoRef.current;
+        video.srcObject = stream;
+        await video.play();
+        setStatus("Halte den Code in den Rahmen");
+
+        const canvas = canvasRef.current;
+        const ctx = canvas.getContext("2d", { willReadFrequently: true });
+
+        function tick() {
+          if (cancelled) return;
+          if (video.readyState !== video.HAVE_ENOUGH_DATA) {
+            rafRef.current = requestAnimationFrame(tick);
+            return;
+          }
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const code = jsQR(img.data, img.width, img.height, {
+            inversionAttempts: "dontInvert",
+          });
+          if (code && code.data) {
+            cancelled = true;
+            stop();
+            onScanned(code.data);
+            return;
+          }
+          rafRef.current = requestAnimationFrame(tick);
+        }
+        rafRef.current = requestAnimationFrame(tick);
+      } catch (e) {
+        setError(
+          e.name === "NotAllowedError"
+            ? "Kamerazugriff verweigert. Erlaube den Zugriff im Browser."
+            : e.message
+        );
+      }
+    }
+
+    start();
+    return () => {
+      cancelled = true;
+      stop();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <Modal onClose={onCancel}>
+      <div className="qr-scanner">
+        <div className="detail-head">
+          <div className="detail-title">QR/Barcode scannen</div>
+        </div>
+        <div className="qr-video-wrap">
+          <video ref={videoRef} playsInline muted className="qr-video" />
+          <canvas ref={canvasRef} style={{ display: "none" }} />
+          <div className="qr-scan-frame" />
+        </div>
+        <div className="qr-status">{status}</div>
+        {error && <div className="alert">{error}</div>}
+        <div className="detail-actions">
+          <button type="button" className="btn-secondary btn-primary-block" onClick={onCancel}>
+            Abbrechen
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function TemplateFormModal({
+  templateType,
+  contacts,
+  docs,
+  defaultSenderName,
+  onSubmit,
+  onCancel,
+}) {
+  const tpl = TEMPLATE_TYPES.find((t) => t.id === templateType);
+  const [form, setForm] = useState({
+    context: "",
+    recipientId: "",
+    linkedDocId: "",
+    senderName: defaultSenderName || "",
+  });
+  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  function set(field, value) {
+    setForm((f) => ({ ...f, [field]: value }));
+    setError(null);
+  }
+
+  async function submit(e) {
+    e.preventDefault();
+    if (!form.context.trim()) {
+      setError("Beschreibe kurz deinen Kontext.");
+      return;
+    }
+    setLoading(true);
+    try {
+      await onSubmit({
+        templateType,
+        context: form.context.trim(),
+        senderName: form.senderName.trim(),
+        recipient: form.recipientId
+          ? contacts.find((c) => c.id === form.recipientId) || null
+          : null,
+        linkedDoc: form.linkedDocId
+          ? docs.find((d) => d.id === form.linkedDocId) || null
+          : null,
+      });
+    } catch (e2) {
+      setError(e2.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <Modal onClose={loading ? undefined : onCancel} dismissable={!loading}>
+      <form onSubmit={submit} className="detail">
+        <div className="detail-head">
+          <div className="detail-title">{tpl?.label || "Vorlage"}</div>
+          <div className="detail-sender">{tpl?.desc}</div>
+        </div>
+
+        <div className="form-field">
+          <label>Worum geht es? *</label>
+          <textarea
+            className="form-input form-textarea"
+            rows={4}
+            value={form.context}
+            onChange={(e) => set("context", e.target.value)}
+            placeholder="z.B. „Kündigung Mobilfunkvertrag zum nächstmöglichen Termin, Kundennr. 12345…"
+            autoFocus
+          />
+        </div>
+
+        <div className="form-field">
+          <label>Empfänger (aus Kontakten)</label>
+          <select
+            className="form-input"
+            value={form.recipientId}
+            onChange={(e) => set("recipientId", e.target.value)}
+          >
+            <option value="">— Nicht verknüpfen —</option>
+            {contacts.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="form-field">
+          <label>Bezug auf Dokument</label>
+          <select
+            className="form-input"
+            value={form.linkedDocId}
+            onChange={(e) => set("linkedDocId", e.target.value)}
+          >
+            <option value="">— Kein Bezug —</option>
+            {docs.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.title}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="form-field">
+          <label>Absender-Name (dein Name)</label>
+          <input
+            type="text"
+            className="form-input"
+            value={form.senderName}
+            onChange={(e) => set("senderName", e.target.value)}
+            placeholder="Max Mustermann"
+          />
+        </div>
+
+        {error && <div className="onboarding-error">{error}</div>}
+
+        <div className="form-actions">
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={onCancel}
+            disabled={loading}
+          >
+            Abbrechen
+          </button>
+          <button
+            type="submit"
+            className="btn-primary btn-primary-block"
+            disabled={loading}
+          >
+            {loading ? "Claude schreibt…" : "Anschreiben erzeugen"}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function TemplateResultModal({
+  result,
+  onCopy,
+  onPrint,
+  onSaveAsDoc,
+  onClose,
+}) {
+  const [copied, setCopied] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  async function handleCopy() {
+    const text = `Betreff: ${result.subject}\n\n${result.body}`;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      onCopy?.();
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      // ignore
+    }
+  }
+
+  function handleSave() {
+    onSaveAsDoc();
+    setSaved(true);
+    setTimeout(() => setSaved(false), 1800);
+  }
+
+  return (
+    <Modal onClose={onClose}>
+      <div className="detail">
+        <div className="detail-head">
+          <div className="detail-title">{result.templateLabel}</div>
+        </div>
+
+        <section className="detail-section">
+          <h3 className="detail-heading">Betreff</h3>
+          <p className="detail-text">{result.subject}</p>
+        </section>
+
+        <section className="detail-section">
+          <div className="detail-heading-row">
+            <h3 className="detail-heading">Anschreiben</h3>
+            <button type="button" className="copy-btn" onClick={handleCopy}>
+              {copied ? "Kopiert" : "Kopieren"}
+            </button>
+          </div>
+          <pre className="code-block">{result.body}</pre>
+        </section>
+
+        <div className="print-area" aria-hidden="true">
+          <h1>{result.subject}</h1>
+          <pre>{result.body}</pre>
+        </div>
+
+        <div className="detail-actions detail-actions-stack">
+          <button
+            type="button"
+            className="btn-primary btn-primary-block"
+            onClick={onPrint}
+          >
+            Als PDF drucken
+          </button>
+          <button
+            type="button"
+            className="btn-secondary btn-primary-block"
+            onClick={handleSave}
+            disabled={saved}
+          >
+            {saved ? "Gespeichert" : "Als Dokument speichern"}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function TemplatesView({ onPick }) {
+  return (
+    <div className="view">
+      <header className="view-header">
+        <h1>Vorlagen</h1>
+        <p className="lead">
+          Wähle eine Vorlage, beschreibe kurz den Kontext — Claude verfasst das
+          Anschreiben.
+        </p>
+      </header>
+
+      <div className="template-grid">
+        {TEMPLATE_TYPES.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            className="card template-card"
+            onClick={() => onPick(t.id)}
+          >
+            <div className="template-icon">
+              <IconTemplate size={22} />
+            </div>
+            <div className="template-body">
+              <div className="template-title">{t.label}</div>
+              <div className="template-desc">{t.desc}</div>
+            </div>
+            <IconChevron />
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function DisclaimerModal({ onAcknowledge }) {
   return (
     <Modal onClose={() => {}} dismissable={false}>
@@ -3057,6 +3463,8 @@ function ScanView({ docs, onScanned, onOpenDoc }) {
   const [dragging, setDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState(null);
+  const [qrOpen, setQrOpen] = useState(false);
+  const [analyzingQr, setAnalyzingQr] = useState(false);
   const fileInputRef = useRef(null);
   const cameraInputRef = useRef(null);
 
@@ -3081,6 +3489,29 @@ function ScanView({ docs, onScanned, onOpenDoc }) {
       setError(e.message);
     } finally {
       setUploading(false);
+    }
+  }
+
+  async function handleQrScanned(text) {
+    setQrOpen(false);
+    setError(null);
+    setAnalyzingQr(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/qr`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: text }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || `HTTP ${res.status}`);
+      }
+      const result = await res.json();
+      onScanned({ ...result, filename: "QR-Code" });
+    } catch (e) {
+      setError("QR-Analyse: " + e.message);
+    } finally {
+      setAnalyzingQr(false);
     }
   }
 
@@ -3128,7 +3559,7 @@ function ScanView({ docs, onScanned, onOpenDoc }) {
       <button
         className="camera-btn"
         onClick={() => cameraInputRef.current?.click()}
-        disabled={uploading}
+        disabled={uploading || analyzingQr}
       >
         <IconCamera />
         <span>Foto aufnehmen</span>
@@ -3141,6 +3572,22 @@ function ScanView({ docs, onScanned, onOpenDoc }) {
         hidden
         onChange={(e) => handleFile(e.target.files?.[0])}
       />
+
+      <button
+        className="camera-btn"
+        onClick={() => setQrOpen(true)}
+        disabled={uploading || analyzingQr}
+      >
+        <IconQr />
+        <span>{analyzingQr ? "Claude analysiert QR…" : "QR/Barcode scannen"}</span>
+      </button>
+
+      {qrOpen && (
+        <QrScannerModal
+          onScanned={handleQrScanned}
+          onCancel={() => setQrOpen(false)}
+        />
+      )}
 
       {error && <div className="alert">Fehler: {error}</div>}
 
@@ -3866,6 +4313,15 @@ export default function App() {
   });
   const folderHandlesRef = useRef(new Map());
   const [selectedEventId, setSelectedEventId] = useState(null);
+  const [templateFormType, setTemplateFormType] = useState(null);
+  const [templateResult, setTemplateResult] = useState(null);
+  const [userName, setUserName] = useState(() => {
+    try {
+      return localStorage.getItem(USER_NAME_KEY) || "";
+    } catch {
+      return "";
+    }
+  });
   const [eventFormOpen, setEventFormOpen] = useState(false);
   const [eventFormMode, setEventFormMode] = useState("add");
   const [eventFormPrefill, setEventFormPrefill] = useState(null);
@@ -4396,6 +4852,56 @@ export default function App() {
     }
   }
 
+  function openTemplateForm(id) {
+    setTemplateResult(null);
+    setTemplateFormType(id);
+  }
+
+  async function submitTemplateRequest(payload) {
+    if (payload.senderName) {
+      try {
+        localStorage.setItem(USER_NAME_KEY, payload.senderName);
+      } catch {
+        // ignore
+      }
+      setUserName(payload.senderName);
+    }
+    const res = await fetch(`${API_BASE}/api/template`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || `HTTP ${res.status}`);
+    }
+    const result = await res.json();
+    setTemplateFormType(null);
+    setTemplateResult(result);
+  }
+
+  function saveTemplateAsDoc() {
+    if (!templateResult) return;
+    const doc = {
+      id: "d" + Date.now(),
+      title: templateResult.subject || templateResult.templateLabel || "Anschreiben",
+      sender: userName || "",
+      category: "Sonstiges",
+      date: isoLocal(TODAY),
+      deadline: null,
+      deadlineType: null,
+      amount: null,
+      summary: `Vorlage: ${templateResult.templateLabel}`,
+      replyDraft: templateResult.body,
+      status: "Offen",
+      notes: null,
+      filename: null,
+      manual: true,
+      source: "template",
+    };
+    setDocs((prev) => [doc, ...prev]);
+  }
+
   function openAddEvent(dateIso) {
     setEventFormMode("add");
     setSelectedEventId(null);
@@ -4579,6 +5085,9 @@ export default function App() {
             onOpenDoc={setSelectedId}
           />
         )}
+        {tab === "templates" && (
+          <TemplatesView onPick={openTemplateForm} />
+        )}
         {tab === "categories" && (
           <CategoriesView
             docs={docs}
@@ -4754,6 +5263,26 @@ export default function App() {
           result={pendingResult}
           onConfirm={handlePostScanConfirm}
           onSkip={handlePostScanSkip}
+        />
+      )}
+
+      {templateFormType && (
+        <TemplateFormModal
+          templateType={templateFormType}
+          contacts={contacts}
+          docs={docs}
+          defaultSenderName={userName}
+          onSubmit={submitTemplateRequest}
+          onCancel={() => setTemplateFormType(null)}
+        />
+      )}
+
+      {templateResult && (
+        <TemplateResultModal
+          result={templateResult}
+          onClose={() => setTemplateResult(null)}
+          onPrint={() => window.print()}
+          onSaveAsDoc={saveTemplateAsDoc}
         />
       )}
 
