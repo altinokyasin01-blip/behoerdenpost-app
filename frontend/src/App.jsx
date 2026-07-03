@@ -690,6 +690,18 @@ const TEMPLATE_TYPES = [
 ];
 
 const USER_NAME_KEY = "buero_user_name";
+const TOOLTIPS_SEEN_KEY = "buero_tooltips_seen";
+
+const TAB_TIPS = {
+  home: "Deine Kommandozentrale — Fristen, Ausgaben und Erinnerungen auf einen Blick. Klick auf eine Karte für Details.",
+  calendar: "Alle Termine, Fristen und Erinnerungen in einer Ansicht. Klick auf einen Tag zeigt die Einträge unten.",
+  scan: "Brief hochladen, Foto aufnehmen oder QR/Barcode scannen. Alles wird lokal analysiert.",
+  templates: "Häufige Anschreiben in Sekunden — Kündigung, Widerspruch, Datenschutzauskunft und mehr.",
+  categories: "Deine Post nach Absender-Typ gruppiert. Klick öffnet das gefilterte Archiv.",
+  contacts: "Behörden, Banken, Vermieter — mit IBAN, Adresse und verknüpften Dokumenten.",
+  archive: "Alle Dokumente durchsuchen und filtern. Auch erledigte bleiben hier auffindbar.",
+  settings: "Design ändern, lokale Ordner freigeben — alles bleibt auf deinem Gerät.",
+};
 
 const INITIAL_DOCS = [];
 
@@ -918,7 +930,7 @@ function formatActionValue(action) {
   return String(action.value);
 }
 
-function PostScanModal({ result, onConfirm, onSkip }) {
+function PostScanModal({ result, isFirstScan, onConfirm, onSkip }) {
   const actions = Array.isArray(result.actions) ? result.actions : [];
 
   const [enabled, setEnabled] = useState(() => {
@@ -956,6 +968,14 @@ function PostScanModal({ result, onConfirm, onSkip }) {
             <div className="postscan-summary">{result.summary}</div>
           )}
         </div>
+
+        {isFirstScan && (
+          <div className="tutorial-inline">
+            <strong>Fast fertig!</strong> Claude hat dein Dokument gelesen und
+            schlägt konkrete Actions vor. Wähle unten aus, was für dich Sinn
+            ergibt — der Rest wird ignoriert.
+          </div>
+        )}
 
         <h3 className="detail-heading">Vorgeschlagene Aktionen</h3>
         <div className="action-list">
@@ -2489,6 +2509,35 @@ function TemplatesView({ onPick }) {
   );
 }
 
+function TabTip({ text, onDismiss }) {
+  return (
+    <div className="tab-tip">
+      <div className="tab-tip-body">{text}</div>
+      <button
+        type="button"
+        className="tab-tip-close"
+        onClick={onDismiss}
+        aria-label="Verstanden"
+      >
+        Verstanden
+      </button>
+    </div>
+  );
+}
+
+function SuccessToast({ message, onDone }) {
+  useEffect(() => {
+    const t = setTimeout(onDone, 3200);
+    return () => clearTimeout(t);
+  }, [onDone]);
+  return (
+    <div className="success-toast" role="status">
+      <span className="success-toast-icon">✓</span>
+      <span>{message}</span>
+    </div>
+  );
+}
+
 function DisclaimerModal({ onAcknowledge }) {
   return (
     <Modal onClose={() => {}} dismissable={false}>
@@ -2522,36 +2571,32 @@ function OnboardingScreen({ onDone }) {
   });
   const [emailError, setEmailError] = useState(null);
 
-  function next() {
-    if (step === 1) {
-      setStep(2);
+  function advanceFromEmail() {
+    if (!isValidEmail(email)) {
+      setEmailError("Bitte gib eine gültige E-Mail-Adresse ein.");
       return;
     }
-    if (step === 2) {
-      if (!isValidEmail(email)) {
-        setEmailError("Bitte gib eine gültige E-Mail-Adresse ein.");
-        return;
-      }
-      try {
-        localStorage.setItem(EMAIL_KEY, email);
-      } catch {
-        // ignore
-      }
-      setStep(3);
-      return;
-    }
-    // step 3 — request notification permission, then finish
     try {
-      if (
-        typeof Notification !== "undefined" &&
-        Notification.permission === "default"
-      ) {
-        Notification.requestPermission();
+      localStorage.setItem(EMAIL_KEY, email);
+    } catch {
+      // ignore
+    }
+    setStep(3);
+  }
+
+  function finish(landing) {
+    onDone(email, landing);
+  }
+
+  function skipOnboarding() {
+    try {
+      if (email && isValidEmail(email)) {
+        localStorage.setItem(EMAIL_KEY, email);
       }
     } catch {
-      // ignore permission errors
+      // ignore
     }
-    onDone(email);
+    onDone(email || "", "home");
   }
 
   return (
@@ -2568,12 +2613,19 @@ function OnboardingScreen({ onDone }) {
 
         {step === 1 && (
           <>
-            <h1 className="onboarding-title">Büro</h1>
+            <div className="onboarding-logo">B</div>
+            <h1 className="onboarding-title">Willkommen bei Büro</h1>
             <p className="onboarding-text">
-              Dein persönlicher Assistent für alles was verwaltet werden will.
-              Scanne Briefe, verwalte Kontakte, behalte Fristen und Termine
-              im Blick.
+              Dein persönlicher Assistent für alles was verwaltet werden will —
+              Post scannen, Fristen im Blick, Kontakte an einem Ort.
             </p>
+            <button
+              type="button"
+              className="btn-primary btn-primary-block"
+              onClick={() => setStep(2)}
+            >
+              Los geht's
+            </button>
           </>
         )}
 
@@ -2581,7 +2633,7 @@ function OnboardingScreen({ onDone }) {
           <>
             <h1 className="onboarding-title">Deine E-Mail-Adresse</h1>
             <p className="onboarding-text">
-              Damit wir dich später an Fristen erinnern können.
+              Für spätere Erinnerungen. Nichts wird versendet.
             </p>
             <input
               type="email"
@@ -2592,32 +2644,57 @@ function OnboardingScreen({ onDone }) {
                 setEmail(e.target.value);
                 setEmailError(null);
               }}
-              onKeyDown={(e) => e.key === "Enter" && next()}
+              onKeyDown={(e) => e.key === "Enter" && advanceFromEmail()}
               autoFocus
             />
             {emailError && (
               <div className="onboarding-error">{emailError}</div>
             )}
+            <button
+              type="button"
+              className="btn-primary btn-primary-block"
+              onClick={advanceFromEmail}
+            >
+              Weiter
+            </button>
           </>
         )}
 
         {step === 3 && (
           <>
-            <h1 className="onboarding-title">Alles bereit</h1>
+            <h1 className="onboarding-title">Und jetzt?</h1>
             <p className="onboarding-text">
-              Du kannst jetzt loslegen. Beim Öffnen fragen wir nach der
-              Berechtigung für Fristerinnerungen im Browser.
+              Der schnellste Einstieg: einen Brief scannen. Claude liest ihn,
+              erkennt Frist und Betrag und schlägt vor, was du damit tun kannst.
             </p>
+            <div className="onboarding-actions">
+              <button
+                type="button"
+                className="btn-primary btn-primary-block"
+                onClick={() => finish("scan")}
+              >
+                Ersten Brief scannen
+              </button>
+              <button
+                type="button"
+                className="btn-secondary btn-primary-block"
+                onClick={() => finish("home")}
+              >
+                Direkt zum Dashboard
+              </button>
+            </div>
           </>
         )}
 
-        <button
-          type="button"
-          className="btn-primary btn-primary-block"
-          onClick={next}
-        >
-          {step === 3 ? "App öffnen" : "Weiter"}
-        </button>
+        {step < 3 && (
+          <button
+            type="button"
+            className="onboarding-skip"
+            onClick={skipOnboarding}
+          >
+            Später einrichten
+          </button>
+        )}
       </div>
     </div>
   );
@@ -3459,7 +3536,7 @@ function SettingsView({
   );
 }
 
-function ScanView({ docs, onScanned, onOpenDoc }) {
+function ScanView({ docs, isFirstScan, onScanned, onOpenDoc }) {
   const [dragging, setDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState(null);
@@ -3527,6 +3604,17 @@ function ScanView({ docs, onScanned, onOpenDoc }) {
         <h1>Scannen</h1>
         <p className="lead">Dokument hochladen oder mit Kamera aufnehmen.</p>
       </header>
+
+      {isFirstScan && (
+        <div className="first-scan-coach">
+          <div className="first-scan-coach-head">Dein erster Scan</div>
+          <div className="first-scan-coach-body">
+            Zieh eine PDF-Datei rein oder tipp auf die Fläche. Claude erkennt
+            Absender, Frist und Betrag und schlägt vor, was du damit tun
+            kannst.
+          </div>
+        </div>
+      )}
 
       <div
         className={`dropzone ${dragging ? "dragging" : ""} ${
@@ -4282,6 +4370,19 @@ function loadUserEmail() {
   }
 }
 
+function loadTooltipsSeen() {
+  try {
+    const raw = localStorage.getItem(TOOLTIPS_SEEN_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return new Set(parsed);
+    }
+  } catch {
+    // ignore
+  }
+  return new Set();
+}
+
 export default function App() {
   const [tab, setTab] = useState("home");
   const [docs, setDocs] = useState(loadDocs);
@@ -4322,6 +4423,8 @@ export default function App() {
       return "";
     }
   });
+  const [tooltipsSeen, setTooltipsSeen] = useState(loadTooltipsSeen);
+  const [successToast, setSuccessToast] = useState(null);
   const [eventFormOpen, setEventFormOpen] = useState(false);
   const [eventFormMode, setEventFormMode] = useState("add");
   const [eventFormPrefill, setEventFormPrefill] = useState(null);
@@ -4368,6 +4471,26 @@ export default function App() {
       // ignore
     }
   }, [events]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        TOOLTIPS_SEEN_KEY,
+        JSON.stringify([...tooltipsSeen])
+      );
+    } catch {
+      // ignore
+    }
+  }, [tooltipsSeen]);
+
+  function markTooltipSeen(id) {
+    setTooltipsSeen((prev) => {
+      if (prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
+  }
 
   useEffect(() => {
     try {
@@ -4598,12 +4721,23 @@ export default function App() {
       setContactFormPrefill(contactPrefill);
       setContactFormOpen(true);
     }
+
+    celebrateFirstScan();
   }
 
   function handlePostScanSkip() {
     if (!pendingResult) return;
     setDocs((prev) => [buildDocFromResult(pendingResult), ...prev]);
     setPendingResult(null);
+    celebrateFirstScan();
+  }
+
+  function celebrateFirstScan() {
+    if (tooltipsSeen.has("first_scan_done")) return;
+    markTooltipSeen("first_scan_done");
+    markTooltipSeen("tab_scan");
+    setSuccessToast("Dein erstes Dokument ist gespeichert.");
+    setTab("home");
   }
 
   function toggleReminder(id) {
@@ -5002,7 +5136,7 @@ export default function App() {
     setDisclaimerOpen(false);
   }
 
-  function completeOnboarding(email) {
+  function completeOnboarding(email, landing = "home") {
     try {
       localStorage.setItem(ONBOARDING_KEY, "1");
     } catch {
@@ -5010,6 +5144,7 @@ export default function App() {
     }
     setUserEmail(email);
     setOnboardingDone(true);
+    setTab(landing === "scan" ? "scan" : "home");
   }
 
   if (!onboardingDone) {
@@ -5051,6 +5186,14 @@ export default function App() {
         <IconSearch size={20} />
       </button>
       <main className="main">
+        {TAB_TIPS[tab] &&
+          !tooltipsSeen.has(`tab_${tab}`) &&
+          !(tab === "scan" && !tooltipsSeen.has("first_scan_done")) && (
+            <TabTip
+              text={TAB_TIPS[tab]}
+              onDismiss={() => markTooltipSeen(`tab_${tab}`)}
+            />
+          )}
         {tab === "home" && (
           <HomeView
             docs={docs}
@@ -5081,6 +5224,7 @@ export default function App() {
         {tab === "scan" && (
           <ScanView
             docs={docs}
+            isFirstScan={!tooltipsSeen.has("first_scan_done")}
             onScanned={setPendingResult}
             onOpenDoc={setSelectedId}
           />
@@ -5261,6 +5405,7 @@ export default function App() {
       {pendingResult && !contactFormOpen && (
         <PostScanModal
           result={pendingResult}
+          isFirstScan={!tooltipsSeen.has("first_scan_done")}
           onConfirm={handlePostScanConfirm}
           onSkip={handlePostScanSkip}
         />
@@ -5304,6 +5449,13 @@ export default function App() {
 
       {disclaimerOpen && (
         <DisclaimerModal onAcknowledge={acknowledgeDisclaimer} />
+      )}
+
+      {successToast && (
+        <SuccessToast
+          message={successToast}
+          onDone={() => setSuccessToast(null)}
+        />
       )}
     </div>
   );

@@ -1352,6 +1352,181 @@ input {
   font-weight: 500;
 }
 
+.onboarding-logo {
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  background: var(--accent);
+  color: var(--accent-text);
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  font-size: 22px;
+  margin: 0 auto 18px;
+}
+
+.onboarding-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.onboarding-skip {
+  display: block;
+  margin: 14px auto 0;
+  background: transparent;
+  border: 0;
+  color: var(--text-muted);
+  font-size: 12.5px;
+  cursor: pointer;
+  padding: 6px 8px;
+}
+
+.onboarding-skip:hover {
+  color: var(--text);
+}
+
+/* ---- Tutorial hints ---- */
+.tab-tip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--accent-soft);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  margin-bottom: 18px;
+  color: var(--text);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+:root[data-theme="dark"] .tab-tip {
+  background: rgba(147, 197, 253, 0.08);
+  border-color: rgba(147, 197, 253, 0.2);
+}
+
+.tab-tip-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.tab-tip-close {
+  flex-shrink: 0;
+  border: 0;
+  background: var(--card);
+  color: var(--text-soft);
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.12s ease;
+}
+
+.tab-tip-close:hover {
+  color: var(--text);
+}
+
+.tutorial-inline {
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--accent-soft);
+  color: var(--text);
+  font-size: 13.5px;
+  line-height: 1.5;
+  margin: 8px 0 14px;
+}
+
+:root[data-theme="dark"] .tutorial-inline {
+  background: rgba(147, 197, 253, 0.1);
+}
+
+.first-scan-coach {
+  padding: 16px 18px;
+  border-radius: 14px;
+  background: var(--accent);
+  color: var(--accent-text);
+  margin-bottom: 16px;
+  box-shadow: var(--shadow-md);
+}
+
+.first-scan-coach-head {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  opacity: 0.7;
+  margin-bottom: 4px;
+}
+
+.first-scan-coach-body {
+  font-size: 14.5px;
+  line-height: 1.5;
+}
+
+.success-toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--accent);
+  color: var(--accent-text);
+  padding: 12px 20px;
+  border-radius: 999px;
+  box-shadow: var(--shadow-md);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  font-weight: 500;
+  z-index: 200;
+  animation: toast-in 0.24s ease-out;
+}
+
+.success-toast-icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--green);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  font-size: 13px;
+}
+
+@keyframes toast-in {
+  from {
+    transform: translate(-50%, 20px);
+    opacity: 0;
+  }
+  to {
+    transform: translate(-50%, 0);
+    opacity: 1;
+  }
+}
+
+@media (max-width: 767px) {
+  .success-toast {
+    left: 12px;
+    right: 12px;
+    transform: none;
+    justify-content: center;
+    bottom: calc(88px + env(safe-area-inset-bottom, 0));
+  }
+  @keyframes toast-in {
+    from {
+      transform: translateY(20px);
+      opacity: 0;
+    }
+    to {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  }
+}
+
 /* ---- Sidebar user block ---- */
 .sidebar-user {
   display: flex;
