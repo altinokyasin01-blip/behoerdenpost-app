@@ -7,6 +7,16 @@ const STORAGE_KEY = "behoerdenpost_docs";
 const DISCLAIMER_KEY = "disclaimer_shown";
 const ONBOARDING_KEY = "onboarding_done";
 const EMAIL_KEY = "user_email";
+const CONTACTS_KEY = "behoerdenpost_contacts";
+
+const CONTACT_TYPES = [
+  "Behörde",
+  "Bank",
+  "Vermieter",
+  "Arzt",
+  "Versicherung",
+  "Sonstiges",
+];
 
 function isValidEmail(s) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s || "");
@@ -128,6 +138,17 @@ function IconUser({ size = 16 }) {
   );
 }
 
+function IconContacts({ size = 20 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...svgProps}>
+      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+    </svg>
+  );
+}
+
 const CATEGORY_SYMBOLS = {
   Finanzamt: "§",
   Krankenkasse: "+",
@@ -145,6 +166,7 @@ const NAV_ITEMS = [
   { id: "home", label: "Home", Icon: IconHome },
   { id: "scan", label: "Scan", Icon: IconScan },
   { id: "categories", label: "Kategorien", Icon: IconGrid },
+  { id: "contacts", label: "Kontakte", Icon: IconContacts },
   { id: "archive", label: "Archiv", Icon: IconArchive },
 ];
 
@@ -905,6 +927,388 @@ function ArchiveView({ docs, categoryFilter, onClearCategoryFilter, onOpenDoc })
   );
 }
 
+function contactTopInfo(c) {
+  return c.iban || c.email || c.phone || "";
+}
+
+function ContactCard({ contact, onClick }) {
+  const top = contactTopInfo(contact);
+  return (
+    <button type="button" className="card doc-card" onClick={onClick}>
+      <div className="doc-body">
+        <div className="doc-title">{contact.name}</div>
+        {top && <div className="doc-meta">{top}</div>}
+      </div>
+      <span className="badge badge-neutral">{contact.type}</span>
+    </button>
+  );
+}
+
+function ContactsView({ contacts, onAdd, onOpenDetail }) {
+  const [search, setSearch] = useState("");
+
+  const filtered = contacts.filter((c) => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    const hay = [c.name, c.iban, c.email, c.phone, c.street, c.zip, c.city]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    return hay.includes(q);
+  });
+
+  return (
+    <div className="view">
+      <header className="view-header">
+        <div className="view-header-row">
+          <div>
+            <h1>Kontakte</h1>
+            <p className="lead">
+              Behörden, Banken, Vermieter — an einem Ort.
+            </p>
+          </div>
+          {contacts.length > 0 && (
+            <button
+              type="button"
+              className="btn-primary btn-primary-sm"
+              onClick={onAdd}
+            >
+              + Kontakt
+            </button>
+          )}
+        </div>
+      </header>
+
+      {contacts.length === 0 ? (
+        <div className="card empty-card">
+          <div className="empty-title">Noch keine Kontakte</div>
+          <div className="empty-sub">
+            Füge deinen ersten Kontakt hinzu — z.B. dein Finanzamt oder deine
+            Krankenkasse.
+          </div>
+          <button type="button" className="btn-primary" onClick={onAdd}>
+            Kontakt hinzufügen
+          </button>
+        </div>
+      ) : (
+        <>
+          <div className="search-box">
+            <IconSearch />
+            <input
+              type="text"
+              placeholder="Suche in Name, IBAN, E-Mail, Telefon, Adresse…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+
+          <div className="doc-list">
+            {filtered.length === 0 && (
+              <div className="empty">Keine Treffer.</div>
+            )}
+            {filtered.map((c) => (
+              <ContactCard
+                key={c.id}
+                contact={c}
+                onClick={() => onOpenDetail(c.id)}
+              />
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function ContactFormModal({ initial, onSave, onCancel }) {
+  const [form, setForm] = useState(
+    initial || {
+      name: "",
+      type: "Sonstiges",
+      iban: "",
+      bic: "",
+      email: "",
+      phone: "",
+      street: "",
+      zip: "",
+      city: "",
+      notes: "",
+    }
+  );
+  const [error, setError] = useState(null);
+
+  function set(field, value) {
+    setForm((f) => ({ ...f, [field]: value }));
+  }
+
+  function submit(e) {
+    e.preventDefault();
+    if (!form.name.trim()) {
+      setError("Name ist ein Pflichtfeld.");
+      return;
+    }
+    onSave({ ...form, name: form.name.trim() });
+  }
+
+  return (
+    <Modal onClose={onCancel}>
+      <form onSubmit={submit} className="detail">
+        <div className="detail-head">
+          <div className="detail-title">
+            {initial ? "Kontakt bearbeiten" : "Kontakt hinzufügen"}
+          </div>
+        </div>
+
+        <div className="form-field">
+          <label>Name *</label>
+          <input
+            type="text"
+            className="form-input"
+            value={form.name}
+            onChange={(e) => {
+              set("name", e.target.value);
+              setError(null);
+            }}
+            autoFocus
+          />
+        </div>
+
+        <div className="form-field">
+          <label>Typ</label>
+          <select
+            className="form-input"
+            value={form.type}
+            onChange={(e) => set("type", e.target.value)}
+          >
+            {CONTACT_TYPES.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="form-grid">
+          <div className="form-field">
+            <label>IBAN</label>
+            <input
+              type="text"
+              className="form-input"
+              value={form.iban}
+              onChange={(e) => set("iban", e.target.value)}
+              placeholder="DE00 0000 0000 0000 0000 00"
+            />
+          </div>
+          <div className="form-field">
+            <label>BIC</label>
+            <input
+              type="text"
+              className="form-input"
+              value={form.bic}
+              onChange={(e) => set("bic", e.target.value)}
+            />
+          </div>
+        </div>
+
+        <div className="form-grid">
+          <div className="form-field">
+            <label>E-Mail</label>
+            <input
+              type="email"
+              className="form-input"
+              value={form.email}
+              onChange={(e) => set("email", e.target.value)}
+            />
+          </div>
+          <div className="form-field">
+            <label>Telefon</label>
+            <input
+              type="tel"
+              className="form-input"
+              value={form.phone}
+              onChange={(e) => set("phone", e.target.value)}
+            />
+          </div>
+        </div>
+
+        <div className="form-field">
+          <label>Straße</label>
+          <input
+            type="text"
+            className="form-input"
+            value={form.street}
+            onChange={(e) => set("street", e.target.value)}
+          />
+        </div>
+
+        <div className="form-grid form-grid-zip">
+          <div className="form-field">
+            <label>PLZ</label>
+            <input
+              type="text"
+              className="form-input"
+              value={form.zip}
+              onChange={(e) => set("zip", e.target.value)}
+            />
+          </div>
+          <div className="form-field">
+            <label>Ort</label>
+            <input
+              type="text"
+              className="form-input"
+              value={form.city}
+              onChange={(e) => set("city", e.target.value)}
+            />
+          </div>
+        </div>
+
+        <div className="form-field">
+          <label>Notizen</label>
+          <textarea
+            className="form-input form-textarea"
+            rows={3}
+            value={form.notes}
+            onChange={(e) => set("notes", e.target.value)}
+          />
+        </div>
+
+        {error && <div className="onboarding-error">{error}</div>}
+
+        <div className="form-actions">
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={onCancel}
+          >
+            Abbrechen
+          </button>
+          <button type="submit" className="btn-primary btn-primary-block">
+            Speichern
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function ContactDetailModal({ contact, docs, onEdit, onDelete, onClose }) {
+  const linkedDocs = docs.filter(
+    (d) =>
+      contact.name &&
+      d.sender &&
+      d.sender.toLowerCase().includes(contact.name.toLowerCase())
+  );
+
+  const fields = [
+    { label: "IBAN", value: contact.iban },
+    { label: "BIC", value: contact.bic },
+    { label: "E-Mail", value: contact.email },
+    { label: "Telefon", value: contact.phone },
+  ];
+
+  const addressLines = [
+    contact.street,
+    [contact.zip, contact.city].filter(Boolean).join(" "),
+  ].filter(Boolean);
+
+  return (
+    <Modal onClose={onClose}>
+      <div className="detail">
+        <div className="detail-head">
+          <div className="detail-title">{contact.name}</div>
+          <div className="detail-badges">
+            <span className="badge badge-neutral">{contact.type}</span>
+          </div>
+        </div>
+
+        {fields.some((f) => f.value) && (
+          <section className="detail-section">
+            <h3 className="detail-heading">Kontaktdaten</h3>
+            <dl className="kv-list">
+              {fields.map(
+                (f) =>
+                  f.value && (
+                    <div key={f.label} className="kv-row">
+                      <dt>{f.label}</dt>
+                      <dd>{f.value}</dd>
+                    </div>
+                  )
+              )}
+            </dl>
+          </section>
+        )}
+
+        {addressLines.length > 0 && (
+          <section className="detail-section">
+            <h3 className="detail-heading">Adresse</h3>
+            <div className="detail-text">
+              {addressLines.map((l, i) => (
+                <div key={i}>{l}</div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {contact.notes && (
+          <section className="detail-section">
+            <h3 className="detail-heading">Notizen</h3>
+            <p className="detail-text">{contact.notes}</p>
+          </section>
+        )}
+
+        <section className="detail-section">
+          <h3 className="detail-heading">
+            Verknüpfte Dokumente ({linkedDocs.length})
+          </h3>
+          {linkedDocs.length === 0 ? (
+            <p className="detail-text detail-muted">
+              Keine Dokumente von diesem Absender.
+            </p>
+          ) : (
+            <div className="linked-list">
+              {linkedDocs.map((d) => (
+                <div key={d.id} className="linked-item">
+                  <div className="linked-title">{d.title}</div>
+                  <div className="linked-meta">
+                    {formatDate(d.date)}
+                    {d.deadline && ` · Frist ${formatDate(d.deadline)}`}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <div className="detail-actions detail-actions-row">
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={onDelete}
+          >
+            Löschen
+          </button>
+          <button type="button" className="btn-primary" onClick={onEdit}>
+            Bearbeiten
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function loadContacts() {
+  try {
+    const raw = localStorage.getItem(CONTACTS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch {
+    // corrupted / unavailable — fall through
+  }
+  return [];
+}
+
 function loadDocs() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -945,8 +1349,12 @@ function loadUserEmail() {
 export default function App() {
   const [tab, setTab] = useState("home");
   const [docs, setDocs] = useState(loadDocs);
+  const [contacts, setContacts] = useState(loadContacts);
   const [categoryFilter, setCategoryFilter] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
+  const [selectedContactId, setSelectedContactId] = useState(null);
+  const [contactFormOpen, setContactFormOpen] = useState(false);
+  const [contactFormMode, setContactFormMode] = useState("add");
   const [disclaimerOpen, setDisclaimerOpen] = useState(loadDisclaimerOpen);
   const [onboardingDone, setOnboardingDone] = useState(loadOnboardingDone);
   const [userEmail, setUserEmail] = useState(loadUserEmail);
@@ -958,6 +1366,14 @@ export default function App() {
       // storage full / private mode — ignore
     }
   }, [docs]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(CONTACTS_KEY, JSON.stringify(contacts));
+    } catch {
+      // ignore
+    }
+  }, [contacts]);
 
   useEffect(() => {
     if (!onboardingDone) return;
@@ -991,6 +1407,30 @@ export default function App() {
   function openCategory(name) {
     setCategoryFilter(name);
     setTab("archive");
+  }
+
+  function openAddContact() {
+    setContactFormMode("add");
+    setContactFormOpen(true);
+  }
+
+  function saveContact(data) {
+    if (contactFormMode === "edit" && selectedContactId) {
+      setContacts((prev) =>
+        prev.map((c) => (c.id === selectedContactId ? { ...c, ...data } : c))
+      );
+    } else {
+      setContacts((prev) => [{ ...data, id: "c" + Date.now() }, ...prev]);
+    }
+    setContactFormOpen(false);
+  }
+
+  function deleteContact() {
+    const c = contacts.find((x) => x.id === selectedContactId);
+    if (!c) return;
+    if (!confirm(`Kontakt "${c.name}" wirklich löschen?`)) return;
+    setContacts((prev) => prev.filter((x) => x.id !== selectedContactId));
+    setSelectedContactId(null);
   }
 
   function acknowledgeDisclaimer() {
@@ -1050,6 +1490,13 @@ export default function App() {
             onNav={navigate}
           />
         )}
+        {tab === "contacts" && (
+          <ContactsView
+            contacts={contacts}
+            onAdd={openAddContact}
+            onOpenDetail={setSelectedContactId}
+          />
+        )}
         {tab === "archive" && (
           <ArchiveView
             docs={docs}
@@ -1066,6 +1513,35 @@ export default function App() {
           doc={selectedDoc}
           onClose={() => setSelectedId(null)}
           onToggleStatus={() => toggleStatus(selectedDoc.id)}
+        />
+      )}
+
+      {selectedContactId && !contactFormOpen && (() => {
+        const c = contacts.find((x) => x.id === selectedContactId);
+        if (!c) return null;
+        return (
+          <ContactDetailModal
+            contact={c}
+            docs={docs}
+            onClose={() => setSelectedContactId(null)}
+            onEdit={() => {
+              setContactFormMode("edit");
+              setContactFormOpen(true);
+            }}
+            onDelete={deleteContact}
+          />
+        );
+      })()}
+
+      {contactFormOpen && (
+        <ContactFormModal
+          initial={
+            contactFormMode === "edit"
+              ? contacts.find((c) => c.id === selectedContactId)
+              : null
+          }
+          onCancel={() => setContactFormOpen(false)}
+          onSave={saveContact}
         />
       )}
 
