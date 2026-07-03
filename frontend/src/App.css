@@ -2118,6 +2118,100 @@ input {
   margin-top: 2px;
 }
 
+/* ---- Payments widget (Home) ---- */
+.payments-card {
+  padding: 0;
+  overflow: hidden;
+}
+
+.payments-total {
+  padding: 18px 18px 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.payments-total-label {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+
+.payments-total-value {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  flex: 1;
+  min-width: 0;
+}
+
+.payments-total-sub {
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+.payments-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.payment-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 18px;
+  background: transparent;
+  border: 0;
+  border-top: 1px solid var(--border);
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+  transition: background 0.12s ease;
+}
+
+.payment-item:first-child {
+  border-top: 0;
+}
+
+.payment-item:hover {
+  background: var(--surface-hover);
+}
+
+.payment-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.payment-title {
+  font-weight: 600;
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.payment-meta {
+  font-size: 12.5px;
+  color: var(--text-muted);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.payment-amount {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--text);
+  flex-shrink: 0;
+}
+
 /* ---- Reminders (Home) ---- */
 .reminder-list {
   display: flex;

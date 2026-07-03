@@ -343,6 +343,15 @@ const CATEGORY_TO_CONTACT_TYPE = {
   Sonstiges: "Sonstiges",
 };
 
+const DOC_CATEGORIES = [
+  "Finanzamt",
+  "Krankenkasse",
+  "Vermieter",
+  "Inkasso",
+  "Versicherung",
+  "Sonstiges",
+];
+
 const DEADLINE_TYPES = ["zahlung", "antwort", "widerspruch", "abgabe", "sonstiges"];
 const DEADLINE_TYPE_LABEL = {
   zahlung: "Zahlung",
@@ -1062,6 +1071,159 @@ function DeadlineEditModal({ doc, onSave, onCancel }) {
             ))}
           </select>
         </div>
+
+        <div className="form-actions">
+          <button type="button" className="btn-secondary" onClick={onCancel}>
+            Abbrechen
+          </button>
+          <button type="submit" className="btn-primary btn-primary-block">
+            Speichern
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function ManualDeadlineFormModal({ onSave, onCancel }) {
+  const [form, setForm] = useState({
+    title: "",
+    sender: "",
+    deadline: "",
+    deadlineType: "sonstiges",
+    amount: "",
+    category: "Sonstiges",
+    notes: "",
+  });
+  const [error, setError] = useState(null);
+
+  function set(field, value) {
+    setForm((f) => ({ ...f, [field]: value }));
+    setError(null);
+  }
+
+  function submit(e) {
+    e.preventDefault();
+    if (!form.title.trim()) {
+      setError("Titel ist ein Pflichtfeld.");
+      return;
+    }
+    if (!form.deadline) {
+      setError("Frist-Datum ist ein Pflichtfeld.");
+      return;
+    }
+    const raw = form.amount.trim().replace(/[€\s]/g, "").replace(",", ".");
+    const amount = raw ? Number(raw) : null;
+    if (raw && !Number.isFinite(amount)) {
+      setError("Betrag ist keine gültige Zahl.");
+      return;
+    }
+    onSave({
+      title: form.title.trim(),
+      sender: form.sender.trim(),
+      deadline: form.deadline,
+      deadlineType: form.deadlineType,
+      amount: amount,
+      category: form.category,
+      notes: form.notes.trim(),
+    });
+  }
+
+  return (
+    <Modal onClose={onCancel}>
+      <form onSubmit={submit} className="detail">
+        <div className="detail-head">
+          <div className="detail-title">Frist hinzufügen</div>
+        </div>
+
+        <div className="form-field">
+          <label>Titel *</label>
+          <input
+            type="text"
+            className="form-input"
+            value={form.title}
+            onChange={(e) => set("title", e.target.value)}
+            placeholder="z.B. Steuererklärung 2025"
+            autoFocus
+          />
+        </div>
+
+        <div className="form-field">
+          <label>Absender / Für wen</label>
+          <input
+            type="text"
+            className="form-input"
+            value={form.sender}
+            onChange={(e) => set("sender", e.target.value)}
+            placeholder="z.B. Finanzamt München"
+          />
+        </div>
+
+        <div className="form-grid">
+          <div className="form-field">
+            <label>Frist *</label>
+            <input
+              type="date"
+              className="form-input"
+              value={form.deadline}
+              onChange={(e) => set("deadline", e.target.value)}
+            />
+          </div>
+          <div className="form-field">
+            <label>Typ</label>
+            <select
+              className="form-input"
+              value={form.deadlineType}
+              onChange={(e) => set("deadlineType", e.target.value)}
+            >
+              {DEADLINE_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {DEADLINE_TYPE_LABEL[t]}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="form-grid">
+          <div className="form-field">
+            <label>Betrag (EUR)</label>
+            <input
+              type="text"
+              inputMode="decimal"
+              className="form-input"
+              value={form.amount}
+              onChange={(e) => set("amount", e.target.value)}
+              placeholder="z.B. 230,50"
+            />
+          </div>
+          <div className="form-field">
+            <label>Kategorie</label>
+            <select
+              className="form-input"
+              value={form.category}
+              onChange={(e) => set("category", e.target.value)}
+            >
+              {DOC_CATEGORIES.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="form-field">
+          <label>Notizen</label>
+          <textarea
+            className="form-input form-textarea"
+            rows={3}
+            value={form.notes}
+            onChange={(e) => set("notes", e.target.value)}
+          />
+        </div>
+
+        {error && <div className="onboarding-error">{error}</div>}
 
         <div className="form-actions">
           <button type="button" className="btn-secondary" onClick={onCancel}>
@@ -2157,6 +2319,7 @@ function HomeView({
   onOpenDoc,
   onOpenReminder,
   onAddReminder,
+  onAddDeadline,
   onToggleReminder,
   onToggleDocStatus,
   onEditDeadline,
@@ -2172,11 +2335,18 @@ function HomeView({
     (d) => deadlineFilter === "all" || (d.deadlineType || "sonstiges") === deadlineFilter
   );
 
+  const pendingPayments = docs
+    .filter((d) => d.amount != null && d.status !== "Erledigt")
+    .sort((a, b) => (a.deadline || "9").localeCompare(b.deadline || "9"));
+  const paymentsTotal = pendingPayments.reduce(
+    (sum, d) => sum + (typeof d.amount === "number" ? d.amount : 0),
+    0
+  );
+
   const openCount = docs.filter((d) => d.status === "Offen").length;
-  const sortedReminders = [...(reminders || [])].sort((a, b) => {
-    if (a.done !== b.done) return a.done ? 1 : -1;
-    return (a.date || "").localeCompare(b.date || "");
-  });
+  const openReminders = (reminders || [])
+    .filter((r) => !r.done)
+    .sort((a, b) => (a.date || "").localeCompare(b.date || ""));
 
   const deadlineFilters = [
     { id: "all", label: "Alle" },
@@ -2207,7 +2377,16 @@ function HomeView({
         </div>
       </section>
 
-      <h2 className="section-title">Anstehende Fristen</h2>
+      <div className="section-title-row">
+        <h2 className="section-title section-title-inline">Anstehende Fristen</h2>
+        <button
+          type="button"
+          className="btn-primary btn-primary-sm"
+          onClick={onAddDeadline}
+        >
+          + Frist
+        </button>
+      </div>
       <div className="filter-pills">
         {deadlineFilters.map((f) => (
           <button
@@ -2304,6 +2483,48 @@ function HomeView({
         })}
       </div>
 
+      {pendingPayments.length > 0 && (
+        <>
+          <h2 className="section-title">Anstehende Ausgaben</h2>
+          <div className="card payments-card">
+            <div className="payments-total">
+              <div className="payments-total-label">Summe offen</div>
+              <div className="payments-total-value">
+                {formatAmount(paymentsTotal)}
+              </div>
+              <div className="payments-total-sub">
+                {pendingPayments.length} Posten
+              </div>
+            </div>
+            <div className="payments-list">
+              {pendingPayments.map((d) => {
+                const days = d.deadline ? daysUntil(d.deadline) : null;
+                const level = days != null ? deadlineLevel(days) : "gray";
+                return (
+                  <button
+                    key={d.id}
+                    type="button"
+                    className="payment-item"
+                    onClick={() => onOpenDoc(d.id)}
+                  >
+                    <div className="payment-body">
+                      <div className="payment-title">{d.title}</div>
+                      <div className={`payment-meta days-${level}`}>
+                        {d.deadline
+                          ? `Fällig ${formatDate(d.deadline)}`
+                          : "Ohne Frist"}
+                        {d.sender && ` · ${d.sender}`}
+                      </div>
+                    </div>
+                    <div className="payment-amount">{formatAmount(d.amount)}</div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </>
+      )}
+
       <div className="section-title-row">
         <h2 className="section-title section-title-inline">Erinnerungen</h2>
         <button
@@ -2315,25 +2536,20 @@ function HomeView({
         </button>
       </div>
       <div className="reminder-list">
-        {sortedReminders.length === 0 && (
-          <div className="empty">Keine Erinnerungen.</div>
+        {openReminders.length === 0 && (
+          <div className="empty">Keine offenen Erinnerungen.</div>
         )}
-        {sortedReminders.map((r) => {
+        {openReminders.map((r) => {
           const days = daysUntil(r.date);
-          const level = r.done ? "gray" : deadlineLevel(days);
+          const level = deadlineLevel(days);
           return (
-            <div
-              key={r.id}
-              className={`card reminder-card ${r.done ? "done" : ""}`}
-            >
+            <div key={r.id} className="card reminder-card">
               <button
                 type="button"
-                className={`reminder-check ${r.done ? "checked" : ""}`}
+                className="reminder-check"
                 onClick={() => onToggleReminder(r.id)}
-                aria-label={r.done ? "Als offen markieren" : "Als erledigt markieren"}
-              >
-                {r.done ? "✓" : ""}
-              </button>
+                aria-label="Als erledigt markieren"
+              />
               <button
                 type="button"
                 className="reminder-body"
@@ -2343,9 +2559,7 @@ function HomeView({
                 <div className={`reminder-meta days-${level}`}>
                   {formatDate(r.date)}
                   {" · "}
-                  {r.done
-                    ? "erledigt"
-                    : days > 0
+                  {days > 0
                     ? `in ${days} Tag${days === 1 ? "" : "en"}`
                     : days === 0
                     ? "heute"
@@ -3639,6 +3853,7 @@ export default function App() {
   const [reminderFormMode, setReminderFormMode] = useState("add");
   const [reminderFormPrefill, setReminderFormPrefill] = useState(null);
   const [deadlineEditDocId, setDeadlineEditDocId] = useState(null);
+  const [manualDeadlineFormOpen, setManualDeadlineFormOpen] = useState(false);
   const [appealDocId, setAppealDocId] = useState(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [fileIndex, setFileIndex] = useState(loadFileIndex);
@@ -3966,6 +4181,31 @@ export default function App() {
 
   function openDeadlineEdit(id) {
     setDeadlineEditDocId(id);
+  }
+
+  function openManualDeadline() {
+    setManualDeadlineFormOpen(true);
+  }
+
+  function saveManualDeadline(data) {
+    const doc = {
+      id: "d" + Date.now(),
+      title: data.title,
+      sender: data.sender || "",
+      category: data.category || "Sonstiges",
+      date: isoLocal(TODAY),
+      deadline: data.deadline || null,
+      deadlineType: data.deadline ? data.deadlineType || "sonstiges" : null,
+      amount: data.amount ?? null,
+      summary: null,
+      replyDraft: null,
+      status: "Offen",
+      notes: data.notes || null,
+      filename: null,
+      manual: true,
+    };
+    setDocs((prev) => [doc, ...prev]);
+    setManualDeadlineFormOpen(false);
   }
 
   function saveDeadlineEdit({ deadline, deadlineType }) {
@@ -4313,6 +4553,7 @@ export default function App() {
             onOpenDoc={setSelectedId}
             onOpenReminder={setSelectedReminderId}
             onAddReminder={() => openAddReminder()}
+            onAddDeadline={openManualDeadline}
             onToggleReminder={toggleReminder}
             onToggleDocStatus={toggleStatus}
             onEditDeadline={openDeadlineEdit}
@@ -4396,6 +4637,13 @@ export default function App() {
           />
         );
       })()}
+
+      {manualDeadlineFormOpen && (
+        <ManualDeadlineFormModal
+          onCancel={() => setManualDeadlineFormOpen(false)}
+          onSave={saveManualDeadline}
+        />
+      )}
 
       {selectedReminderId && !reminderFormOpen && (() => {
         const r = reminders.find((x) => x.id === selectedReminderId);
