@@ -1204,15 +1204,299 @@ function EventDetailModal({ event, contact, onEdit, onDelete, onClose }) {
   );
 }
 
+function normalizeCompact(s) {
+  return String(s || "").replace(/[\s\-./]/g, "").toLowerCase();
+}
+
+function parseAmountQuery(s) {
+  const t = String(s).replace(/[€\s]/g, "").replace(",", ".");
+  if (!/^\d+(\.\d+)?$/.test(t)) return null;
+  const n = Number(t);
+  return Number.isFinite(n) ? n : null;
+}
+
+function parseDateQuery(s) {
+  const t = String(s).trim();
+  const m = t.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+  if (m) {
+    return `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
+  }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t;
+  return null;
+}
+
+function searchAll(query, { docs, contacts, reminders, events }) {
+  const qRaw = query.trim();
+  if (!qRaw) return null;
+  const q = qRaw.toLowerCase();
+  const qCompact = normalizeCompact(qRaw);
+  const qAmount = parseAmountQuery(qRaw);
+  const qDate = parseDateQuery(qRaw);
+
+  function textField(field, value) {
+    if (!value) return null;
+    const s = String(value);
+    if (s.toLowerCase().includes(q)) return { field, snippet: s };
+    if (qCompact && normalizeCompact(s).includes(qCompact)) {
+      return { field, snippet: s };
+    }
+    return null;
+  }
+  function amountField(field, value) {
+    if (qAmount == null || value == null) return null;
+    if (Math.abs(Number(value) - qAmount) < 0.005) {
+      return { field, snippet: formatAmount(value) };
+    }
+    return null;
+  }
+  function dateField(field, value) {
+    if (!qDate || !value) return null;
+    if (value === qDate) return { field, snippet: formatDate(value) };
+    return null;
+  }
+
+  const docHits = [];
+  for (const d of docs) {
+    const match =
+      textField("Titel", d.title) ||
+      textField("Absender", d.sender) ||
+      textField("Kategorie", d.category) ||
+      textField("Zusammenfassung", d.summary) ||
+      textField("Notiz", d.notes) ||
+      textField("Antwortentwurf", d.replyDraft) ||
+      amountField("Betrag", d.amount) ||
+      dateField("Frist", d.deadline) ||
+      dateField("Datum", d.date);
+    if (match) docHits.push({ item: d, ...match });
+  }
+  const contactHits = [];
+  for (const c of contacts) {
+    const match =
+      textField("Name", c.name) ||
+      textField("IBAN", c.iban) ||
+      textField("BIC", c.bic) ||
+      textField("E-Mail", c.email) ||
+      textField("Telefon", c.phone) ||
+      textField(
+        "Adresse",
+        [c.street, c.zip, c.city].filter(Boolean).join(" ")
+      ) ||
+      textField("Notizen", c.notes);
+    if (match) contactHits.push({ item: c, ...match });
+  }
+  const reminderHits = [];
+  for (const r of reminders) {
+    const match =
+      textField("Titel", r.title) ||
+      textField("Notiz", r.notes) ||
+      dateField("Datum", r.date);
+    if (match) reminderHits.push({ item: r, ...match });
+  }
+  const eventHits = [];
+  for (const e of events) {
+    const match =
+      textField("Titel", e.title) ||
+      textField("Notizen", e.notes) ||
+      textField("Uhrzeit", e.time) ||
+      dateField("Datum", e.date);
+    if (match) eventHits.push({ item: e, ...match });
+  }
+  const total =
+    docHits.length +
+    contactHits.length +
+    reminderHits.length +
+    eventHits.length;
+  return {
+    docs: docHits,
+    contacts: contactHits,
+    reminders: reminderHits,
+    events: eventHits,
+    total,
+  };
+}
+
+function SearchHit({ icon, title, field, snippet, onClick }) {
+  return (
+    <button type="button" className="search-hit" onClick={onClick}>
+      <div className="search-hit-icon">{icon}</div>
+      <div className="search-hit-body">
+        <div className="search-hit-title">{title}</div>
+        <div className="search-hit-meta">
+          <span className="search-hit-field">{field}</span>
+          <span className="search-hit-snippet">{snippet}</span>
+        </div>
+      </div>
+    </button>
+  );
+}
+
+function SearchModal({
+  docs,
+  contacts,
+  reminders,
+  events,
+  onOpenDoc,
+  onOpenContact,
+  onOpenReminder,
+  onOpenEvent,
+  onClose,
+}) {
+  const [query, setQuery] = useState("");
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  const results = useMemo(
+    () => searchAll(query, { docs, contacts, reminders, events }),
+    [query, docs, contacts, reminders, events]
+  );
+
+  function pick(handler) {
+    return (id) => {
+      onClose();
+      handler(id);
+    };
+  }
+  const openDoc = pick(onOpenDoc);
+  const openContact = pick(onOpenContact);
+  const openReminder = pick(onOpenReminder);
+  const openEvent = pick(onOpenEvent);
+
+  return (
+    <Modal onClose={onClose}>
+      <div className="search-modal">
+        <div className="search-input-wrap">
+          <IconSearch size={20} />
+          <input
+            ref={inputRef}
+            type="text"
+            className="search-input-large"
+            placeholder="Nach allem suchen — Namen, Beträge, IBANs, Datum…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            autoComplete="off"
+            spellCheck={false}
+          />
+        </div>
+
+        {!results && (
+          <div className="search-empty-state">
+            <h3 className="search-empty-title">Was suchst du?</h3>
+            <ul className="search-hints">
+              <li>
+                <strong>230,50</strong> — findet Dokumente mit diesem Betrag
+              </li>
+              <li>
+                <strong>DE12 3456…</strong> — findet Kontakte per IBAN, auch mit Leerzeichen
+              </li>
+              <li>
+                <strong>15.07.2026</strong> — findet Fristen und Termine an diesem Tag
+              </li>
+              <li>
+                <strong>Finanzamt</strong> — Absender, Kontaktnamen, Kategorien
+              </li>
+              <li>
+                <strong>Bußgeld</strong> — sucht auch in Zusammenfassungen und Notizen
+              </li>
+            </ul>
+            <div className="search-shortcut-hint">
+              Tipp: <kbd>⌘</kbd>+<kbd>K</kbd> (oder <kbd>Strg</kbd>+<kbd>K</kbd>) öffnet die Suche überall
+            </div>
+          </div>
+        )}
+
+        {results && results.total === 0 && (
+          <div className="empty">Keine Treffer für „{query}".</div>
+        )}
+
+        {results && results.total > 0 && (
+          <div className="search-results">
+            {results.docs.length > 0 && (
+              <section className="search-group">
+                <h4 className="search-group-title">
+                  Dokumente <span className="search-group-count">{results.docs.length}</span>
+                </h4>
+                {results.docs.map((h) => (
+                  <SearchHit
+                    key={h.item.id}
+                    icon="§"
+                    title={h.item.title}
+                    field={h.field}
+                    snippet={h.snippet}
+                    onClick={() => openDoc(h.item.id)}
+                  />
+                ))}
+              </section>
+            )}
+            {results.contacts.length > 0 && (
+              <section className="search-group">
+                <h4 className="search-group-title">
+                  Kontakte <span className="search-group-count">{results.contacts.length}</span>
+                </h4>
+                {results.contacts.map((h) => (
+                  <SearchHit
+                    key={h.item.id}
+                    icon="◉"
+                    title={h.item.name}
+                    field={h.field}
+                    snippet={h.snippet}
+                    onClick={() => openContact(h.item.id)}
+                  />
+                ))}
+              </section>
+            )}
+            {results.reminders.length > 0 && (
+              <section className="search-group">
+                <h4 className="search-group-title">
+                  Erinnerungen <span className="search-group-count">{results.reminders.length}</span>
+                </h4>
+                {results.reminders.map((h) => (
+                  <SearchHit
+                    key={h.item.id}
+                    icon="◐"
+                    title={h.item.title}
+                    field={h.field}
+                    snippet={h.snippet}
+                    onClick={() => openReminder(h.item.id)}
+                  />
+                ))}
+              </section>
+            )}
+            {results.events.length > 0 && (
+              <section className="search-group">
+                <h4 className="search-group-title">
+                  Termine <span className="search-group-count">{results.events.length}</span>
+                </h4>
+                {results.events.map((h) => (
+                  <SearchHit
+                    key={h.item.id}
+                    icon="◆"
+                    title={h.item.title}
+                    field={h.field}
+                    snippet={h.snippet}
+                    onClick={() => openEvent(h.item.id)}
+                  />
+                ))}
+              </section>
+            )}
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
 function DisclaimerModal({ onAcknowledge }) {
   return (
     <Modal onClose={() => {}} dismissable={false}>
       <div className="disclaimer">
         <h2 className="disclaimer-title">Willkommen</h2>
         <p className="disclaimer-text">
-          Behördenpost hilft dir, Behördenbriefe zu verstehen. Die App ersetzt
-          keine Rechtsberatung. Bei komplexen Fällen wende dich an einen Anwalt
-          oder Steuerberater.
+          Büro hilft dir, deine Post, Fristen und Termine im Griff zu behalten.
+          Die App ersetzt keine Rechtsberatung. Bei komplexen Fällen wende dich
+          an einen Anwalt oder Steuerberater.
         </p>
         <button
           type="button"
@@ -1283,10 +1567,11 @@ function OnboardingScreen({ onDone }) {
 
         {step === 1 && (
           <>
-            <h1 className="onboarding-title">Behördenpost-Assistent</h1>
+            <h1 className="onboarding-title">Büro</h1>
             <p className="onboarding-text">
-              Fotografiere Behördenbriefe, lass sie automatisch analysieren
-              und behalte deine Fristen im Blick.
+              Dein persönlicher Assistent für alles was verwaltet werden will.
+              Scanne Briefe, verwalte Kontakte, behalte Fristen und Termine
+              im Blick.
             </p>
           </>
         )}
@@ -1337,13 +1622,26 @@ function OnboardingScreen({ onDone }) {
   );
 }
 
-function Sidebar({ active, onChange, userEmail }) {
+function Sidebar({ active, onChange, userEmail, onOpenSearch }) {
   return (
     <aside className="sidebar">
       <div className="logo">
         <div className="logo-mark">B</div>
-        <div className="logo-text">Behördenpost</div>
+        <div className="logo-text">Büro</div>
       </div>
+      <button
+        type="button"
+        className="sidebar-search"
+        onClick={onOpenSearch}
+        aria-label="Suche öffnen"
+      >
+        <IconSearch size={16} />
+        <span className="sidebar-search-label">Suchen…</span>
+        <span className="sidebar-search-kbd">
+          <kbd>⌘</kbd>
+          <kbd>K</kbd>
+        </span>
+      </button>
       <nav className="nav-list">
         {NAV_ITEMS.map(({ id, label, Icon }) => (
           <button
@@ -2734,6 +3032,7 @@ export default function App() {
   const [reminderFormPrefill, setReminderFormPrefill] = useState(null);
   const [deadlineEditDocId, setDeadlineEditDocId] = useState(null);
   const [appealDocId, setAppealDocId] = useState(null);
+  const [searchOpen, setSearchOpen] = useState(false);
   const [selectedEventId, setSelectedEventId] = useState(null);
   const [eventFormOpen, setEventFormOpen] = useState(false);
   const [eventFormMode, setEventFormMode] = useState("add");
@@ -2781,6 +3080,17 @@ export default function App() {
     // new users after they finish step 3). Docs snapshot at that moment is fine.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onboardingDone]);
+
+  useEffect(() => {
+    function onKey(e) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setSearchOpen(true);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   const selectedDoc = docs.find((d) => d.id === selectedId);
 
@@ -3118,7 +3428,20 @@ export default function App() {
 
   return (
     <div className="app">
-      <Sidebar active={tab} onChange={navigate} userEmail={userEmail} />
+      <Sidebar
+        active={tab}
+        onChange={navigate}
+        userEmail={userEmail}
+        onOpenSearch={() => setSearchOpen(true)}
+      />
+      <button
+        type="button"
+        className="search-fab"
+        onClick={() => setSearchOpen(true)}
+        aria-label="Suche öffnen"
+      >
+        <IconSearch size={20} />
+      </button>
       <main className="main">
         {tab === "home" && (
           <HomeView
@@ -3309,6 +3632,20 @@ export default function App() {
           result={pendingResult}
           onConfirm={handlePostScanConfirm}
           onSkip={handlePostScanSkip}
+        />
+      )}
+
+      {searchOpen && (
+        <SearchModal
+          docs={docs}
+          contacts={contacts}
+          reminders={reminders}
+          events={events}
+          onClose={() => setSearchOpen(false)}
+          onOpenDoc={setSelectedId}
+          onOpenContact={setSelectedContactId}
+          onOpenReminder={setSelectedReminderId}
+          onOpenEvent={setSelectedEventId}
         />
       )}
 

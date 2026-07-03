@@ -1,8 +1,12 @@
-# Behördenpost-Assistent
+# Büro
 
-B2C web app that helps users understand German administrative letters. Upload a
-PDF or photo of a letter, and Claude summarizes it, extracts deadlines, and
-drafts a reply.
+Dein persönlicher Assistent für alles was verwaltet werden will.
+
+B2C web app that helps users manage the administrative side of life —
+scanning letters and bills, tracking deadlines and reminders, keeping
+contacts, and offering an AI-assisted appeal check. Scan a PDF or photo,
+and Claude summarizes it, extracts the deadline, and suggests concrete
+actions (contact / reminder / event / …).
 
 ## Stack
 
@@ -12,7 +16,7 @@ drafts a reply.
 ## Project layout
 
 ```
-behoerdenpost-app/
+buero-app/
 ├── backend/
 │   ├── index.js           # Express server entry
 │   ├── routes/analyze.js  # POST /api/analyze
