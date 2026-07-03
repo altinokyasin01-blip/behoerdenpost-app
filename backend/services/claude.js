@@ -66,6 +66,14 @@ Regeln für "actions":
   * "amount"    — value = Zahl in Euro (Punkt als Dezimaltrennzeichen, kein Währungssymbol)
   * "deadline"  — value = ISO-Datum der Frist (YYYY-MM-DD)
   * "note"      — value = kurzer Freitext, den der Nutzer als Notiz speichern könnte
+  * "event"     — value = Objekt { "title": "Kurzer Termintitel",
+                                   "date": "YYYY-MM-DD",
+                                   "time": "HH:MM" oder null,
+                                   "notes": "Optional: Ort/Aktenzeichen/Hinweis oder null" }
+                 Verwende "event" NUR bei konkreten Terminen mit Ort und/oder Uhrzeit
+                 (Gerichtstermin, Anhörung, Vorladung, Vor-Ort-Prüfung, Abgabe-Termin
+                 mit Erscheinungspflicht). Kein "event" für reine Deadlines — dafür
+                 gibt es "deadline" und "reminder".
 - priority:
   * "high"   — dringend / rechtsverbindlich / vor Ablauf einer nahen Frist relevant
   * "medium" — hilfreich, aber nicht zeitkritisch
@@ -165,8 +173,28 @@ const ACTION_TYPES = new Set([
   "amount",
   "deadline",
   "note",
+  "event",
 ]);
 const PRIORITY_RANK = { high: 0, medium: 1, low: 2 };
+
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const HHMM_RE = /^\d{2}:\d{2}$/;
+
+function normalizeEventValue(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const title = typeof raw.title === "string" ? raw.title.trim() : "";
+  const date = typeof raw.date === "string" && ISO_DATE_RE.test(raw.date)
+    ? raw.date
+    : null;
+  if (!title || !date) return null;
+  const time = typeof raw.time === "string" && HHMM_RE.test(raw.time)
+    ? raw.time
+    : null;
+  const notes = typeof raw.notes === "string" && raw.notes.trim()
+    ? raw.notes.trim()
+    : null;
+  return { title, date, time, notes };
+}
 
 function normalizeActions(raw) {
   if (!Array.isArray(raw)) return [];
@@ -181,6 +209,10 @@ function normalizeActions(raw) {
     if (item.type === "amount" && typeof value === "string") {
       const n = Number(value.replace(",", "."));
       value = Number.isFinite(n) ? n : null;
+    }
+    if (item.type === "event") {
+      value = normalizeEventValue(value);
+      if (!value) continue;
     }
     cleaned.push({ type: item.type, label, value: value ?? null, priority });
     if (cleaned.length >= 6) break;

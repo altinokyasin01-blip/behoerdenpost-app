@@ -9,6 +9,7 @@ const ONBOARDING_KEY = "onboarding_done";
 const EMAIL_KEY = "user_email";
 const CONTACTS_KEY = "behoerdenpost_contacts";
 const REMINDERS_KEY = "behoerdenpost_reminders";
+const EVENTS_KEY = "behoerdenpost_events";
 
 const CONTACT_TYPES = [
   "Behörde",
@@ -39,14 +40,21 @@ const DEADLINE_TYPE_LABEL = {
 
 const REMINDER_DAYS_BEFORE_OPTIONS = [0, 1, 3, 7];
 
+function isoLocal(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 function addDays(iso, delta) {
   const d = new Date(iso + "T00:00:00");
   d.setDate(d.getDate() + delta);
-  return d.toISOString().slice(0, 10);
+  return isoLocal(d);
 }
 
 function todayIso() {
-  return TODAY.toISOString().slice(0, 10);
+  return isoLocal(TODAY);
 }
 
 function formatAmount(v) {
@@ -65,7 +73,7 @@ function isValidEmail(s) {
 function sendDeadlineReminders(docs, reminders = []) {
   if (typeof Notification === "undefined") return;
   if (Notification.permission !== "granted") return;
-  const today = TODAY.toISOString().slice(0, 10);
+  const today = isoLocal(TODAY);
   for (const d of docs) {
     if (d.status === "Erledigt" || !d.deadline) continue;
     const days = daysUntil(d.deadline);
@@ -211,6 +219,17 @@ function IconContacts({ size = 20 }) {
   );
 }
 
+function IconCalendar({ size = 20 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...svgProps}>
+      <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+      <line x1="16" y1="2" x2="16" y2="6" />
+      <line x1="8" y1="2" x2="8" y2="6" />
+      <line x1="3" y1="10" x2="21" y2="10" />
+    </svg>
+  );
+}
+
 const CATEGORY_SYMBOLS = {
   Finanzamt: "§",
   Krankenkasse: "+",
@@ -226,6 +245,7 @@ function categorySymbol(name) {
 
 const NAV_ITEMS = [
   { id: "home", label: "Home", Icon: IconHome },
+  { id: "calendar", label: "Kalender", Icon: IconCalendar },
   { id: "scan", label: "Scan", Icon: IconScan },
   { id: "categories", label: "Kategorien", Icon: IconGrid },
   { id: "contacts", label: "Kontakte", Icon: IconContacts },
@@ -436,6 +456,7 @@ const ACTION_TYPE_LABEL = {
   amount: "Betrag",
   deadline: "Frist",
   note: "Notiz",
+  event: "Termin",
 };
 
 function formatActionValue(action) {
@@ -446,6 +467,14 @@ function formatActionValue(action) {
   }
   if (action.type === "deadline" || action.type === "reminder") {
     return formatDate(action.value);
+  }
+  if (action.type === "event") {
+    const v = action.value || {};
+    const parts = [];
+    if (v.date) parts.push(formatDate(v.date));
+    if (v.time) parts.push(v.time);
+    if (v.notes) parts.push(v.notes);
+    return parts.join(" · ");
   }
   return String(action.value);
 }
@@ -512,6 +541,11 @@ function PostScanModal({ result, onConfirm, onSkip }) {
                 />
                 <div className="action-body">
                   <div className="action-row">
+                    {a.type === "event" && (
+                      <span className="action-icon-lead">
+                        <IconCalendar size={14} />
+                      </span>
+                    )}
                     <span className={`action-tag tag-${a.type}`}>
                       {ACTION_TYPE_LABEL[a.type] || a.type}
                     </span>
@@ -1015,6 +1049,161 @@ function AppealModal({
   );
 }
 
+function EventFormModal({ initial, contacts, onSave, onCancel }) {
+  const [form, setForm] = useState(() => ({
+    title: "",
+    date: "",
+    time: "",
+    contactId: null,
+    notes: "",
+    ...(initial || {}),
+  }));
+  const [error, setError] = useState(null);
+
+  function set(field, value) {
+    setForm((f) => ({ ...f, [field]: value }));
+    setError(null);
+  }
+
+  function submit(e) {
+    e.preventDefault();
+    if (!form.title.trim()) {
+      setError("Titel ist ein Pflichtfeld.");
+      return;
+    }
+    if (!form.date) {
+      setError("Datum ist ein Pflichtfeld.");
+      return;
+    }
+    onSave({
+      ...form,
+      title: form.title.trim(),
+      time: form.time || "",
+      notes: form.notes ? form.notes.trim() : "",
+    });
+  }
+
+  return (
+    <Modal onClose={onCancel}>
+      <form onSubmit={submit} className="detail">
+        <div className="detail-head">
+          <div className="detail-title">
+            {initial ? "Termin bearbeiten" : "Termin hinzufügen"}
+          </div>
+        </div>
+
+        <div className="form-field">
+          <label>Titel *</label>
+          <input
+            type="text"
+            className="form-input"
+            value={form.title}
+            onChange={(e) => set("title", e.target.value)}
+            autoFocus
+          />
+        </div>
+
+        <div className="form-grid">
+          <div className="form-field">
+            <label>Datum *</label>
+            <input
+              type="date"
+              className="form-input"
+              value={form.date}
+              onChange={(e) => set("date", e.target.value)}
+            />
+          </div>
+          <div className="form-field">
+            <label>Uhrzeit</label>
+            <input
+              type="time"
+              className="form-input"
+              value={form.time || ""}
+              onChange={(e) => set("time", e.target.value)}
+            />
+          </div>
+        </div>
+
+        <div className="form-field">
+          <label>Verknüpfter Kontakt</label>
+          <select
+            className="form-input"
+            value={form.contactId || ""}
+            onChange={(e) => set("contactId", e.target.value || null)}
+          >
+            <option value="">— Kein Kontakt —</option>
+            {contacts.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="form-field">
+          <label>Notizen</label>
+          <textarea
+            className="form-input form-textarea"
+            rows={3}
+            value={form.notes || ""}
+            onChange={(e) => set("notes", e.target.value)}
+          />
+        </div>
+
+        {error && <div className="onboarding-error">{error}</div>}
+
+        <div className="form-actions">
+          <button type="button" className="btn-secondary" onClick={onCancel}>
+            Abbrechen
+          </button>
+          <button type="submit" className="btn-primary btn-primary-block">
+            Speichern
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function EventDetailModal({ event, contact, onEdit, onDelete, onClose }) {
+  return (
+    <Modal onClose={onClose}>
+      <div className="detail">
+        <div className="detail-head">
+          <div className="detail-title">{event.title}</div>
+          <div className="detail-sender">
+            {formatDate(event.date)}
+            {event.time && ` · ${event.time}`}
+          </div>
+        </div>
+
+        {contact && (
+          <section className="detail-section">
+            <h3 className="detail-heading">Kontakt</h3>
+            <div className="detail-text">{contact.name}</div>
+          </section>
+        )}
+
+        {event.notes && (
+          <section className="detail-section">
+            <h3 className="detail-heading">Notizen</h3>
+            <p className="detail-text">{event.notes}</p>
+          </section>
+        )}
+
+        <div className="detail-actions detail-actions-row">
+          <button type="button" className="btn-secondary" onClick={onDelete}>
+            Löschen
+          </button>
+          <button type="button" className="btn-primary" onClick={onEdit}>
+            Bearbeiten
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 function DisclaimerModal({ onAcknowledge }) {
   return (
     <Modal onClose={() => {}} dismissable={false}>
@@ -1431,6 +1620,315 @@ function HomeView({
         </div>
         <IconChevron />
       </button>
+    </div>
+  );
+}
+
+const WEEKDAY_HEADERS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
+const MONTH_NAMES = [
+  "Januar",
+  "Februar",
+  "März",
+  "April",
+  "Mai",
+  "Juni",
+  "Juli",
+  "August",
+  "September",
+  "Oktober",
+  "November",
+  "Dezember",
+];
+
+function generateMonthCells(year, month) {
+  const first = new Date(year, month, 1);
+  const dayOfWeek = (first.getDay() + 6) % 7;
+  const cells = [];
+  for (let i = 0; i < 42; i++) {
+    const d = new Date(year, month, 1 - dayOfWeek + i);
+    cells.push({
+      iso: isoLocal(d),
+      day: d.getDate(),
+      inCurrentMonth: d.getMonth() === month,
+    });
+  }
+  return cells;
+}
+
+function CalendarView({
+  docs,
+  reminders,
+  events,
+  contacts,
+  onOpenDoc,
+  onOpenReminder,
+  onOpenEvent,
+  onAddEvent,
+}) {
+  const [cursor, setCursor] = useState(
+    () => new Date(TODAY.getFullYear(), TODAY.getMonth(), 1)
+  );
+  const [selectedDate, setSelectedDate] = useState(() => isoLocal(TODAY));
+
+  const year = cursor.getFullYear();
+  const month = cursor.getMonth();
+  const todayISO = isoLocal(TODAY);
+
+  const entriesByDay = useMemo(() => {
+    const map = new Map();
+    function push(iso, kind, item) {
+      if (!iso) return;
+      if (!map.has(iso)) {
+        map.set(iso, { deadline: [], reminder: [], event: [] });
+      }
+      map.get(iso)[kind].push(item);
+    }
+    for (const d of docs) {
+      if (d.deadline && d.status !== "Erledigt") push(d.deadline, "deadline", d);
+    }
+    for (const r of reminders) {
+      if (r.date && !r.done) push(r.date, "reminder", r);
+    }
+    for (const e of events) {
+      if (e.date) push(e.date, "event", e);
+    }
+    return map;
+  }, [docs, reminders, events]);
+
+  const cells = useMemo(() => generateMonthCells(year, month), [year, month]);
+
+  const emptyDay = { deadline: [], reminder: [], event: [] };
+  const selectedEntries = entriesByDay.get(selectedDate) || emptyDay;
+  const selectedIsEmpty =
+    selectedEntries.deadline.length === 0 &&
+    selectedEntries.reminder.length === 0 &&
+    selectedEntries.event.length === 0;
+
+  const agenda = useMemo(() => {
+    const days = [];
+    for (let i = 0; i < 30; i++) {
+      const d = new Date(
+        TODAY.getFullYear(),
+        TODAY.getMonth(),
+        TODAY.getDate() + i
+      );
+      const iso = isoLocal(d);
+      const entries = entriesByDay.get(iso);
+      if (
+        entries &&
+        (entries.deadline.length ||
+          entries.reminder.length ||
+          entries.event.length)
+      ) {
+        days.push({ iso, entries });
+      }
+    }
+    return days;
+  }, [entriesByDay]);
+
+  function contactName(id) {
+    if (!id) return null;
+    const c = contacts.find((x) => x.id === id);
+    return c ? c.name : null;
+  }
+
+  return (
+    <div className="view">
+      <header className="view-header">
+        <h1>Kalender</h1>
+        <p className="lead">
+          Alle Fristen, Erinnerungen und Termine in einer Ansicht.
+        </p>
+      </header>
+
+      <div className="calendar-nav">
+        <button
+          type="button"
+          className="calendar-nav-btn"
+          onClick={() => setCursor(new Date(year, month - 1, 1))}
+          aria-label="Voriger Monat"
+        >
+          ‹
+        </button>
+        <div className="calendar-title">
+          {MONTH_NAMES[month]} {year}
+        </div>
+        <button
+          type="button"
+          className="calendar-nav-btn"
+          onClick={() => setCursor(new Date(year, month + 1, 1))}
+          aria-label="Nächster Monat"
+        >
+          ›
+        </button>
+      </div>
+
+      <div className="calendar-grid">
+        {WEEKDAY_HEADERS.map((h) => (
+          <div key={h} className="calendar-weekday">
+            {h}
+          </div>
+        ))}
+        {cells.map((cell) => {
+          const entry = entriesByDay.get(cell.iso);
+          const isToday = cell.iso === todayISO;
+          const isSelected = cell.iso === selectedDate;
+          const classes = [
+            "calendar-cell",
+            isToday ? "today" : "",
+            isSelected ? "selected" : "",
+            cell.inCurrentMonth ? "" : "out-of-month",
+          ]
+            .filter(Boolean)
+            .join(" ");
+          return (
+            <button
+              key={cell.iso}
+              type="button"
+              className={classes}
+              onClick={() => setSelectedDate(cell.iso)}
+            >
+              <span className="calendar-day">{cell.day}</span>
+              {entry && (
+                <div className="calendar-dots">
+                  {entry.deadline.length > 0 && (
+                    <span className="calendar-dot dot-red" />
+                  )}
+                  {entry.reminder.length > 0 && (
+                    <span className="calendar-dot dot-amber" />
+                  )}
+                  {entry.event.length > 0 && (
+                    <span className="calendar-dot dot-blue" />
+                  )}
+                </div>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="day-panel">
+        <div className="day-panel-head">
+          <div className="day-panel-title">{formatDate(selectedDate)}</div>
+          <button
+            type="button"
+            className="btn-primary btn-primary-sm"
+            onClick={() => onAddEvent(selectedDate)}
+          >
+            + Termin
+          </button>
+        </div>
+        <div className="day-entries">
+          {selectedIsEmpty && (
+            <div className="empty">Keine Einträge an diesem Tag.</div>
+          )}
+          {selectedEntries.deadline.map((d) => (
+            <button
+              key={d.id}
+              type="button"
+              className="day-entry"
+              onClick={() => onOpenDoc(d.id)}
+            >
+              <span className="entry-marker marker-red" />
+              <div className="entry-body">
+                <div className="entry-title">{d.title}</div>
+                <div className="entry-meta">
+                  Frist
+                  {d.deadlineType &&
+                    ` · ${DEADLINE_TYPE_LABEL[d.deadlineType]}`}
+                  {d.sender && ` · ${d.sender}`}
+                </div>
+              </div>
+            </button>
+          ))}
+          {selectedEntries.reminder.map((r) => (
+            <button
+              key={r.id}
+              type="button"
+              className="day-entry"
+              onClick={() => onOpenReminder(r.id)}
+            >
+              <span className="entry-marker marker-amber" />
+              <div className="entry-body">
+                <div className="entry-title">{r.title}</div>
+                <div className="entry-meta">Erinnerung</div>
+              </div>
+            </button>
+          ))}
+          {selectedEntries.event.map((e) => {
+            const cName = contactName(e.contactId);
+            return (
+              <button
+                key={e.id}
+                type="button"
+                className="day-entry"
+                onClick={() => onOpenEvent(e.id)}
+              >
+                <span className="entry-marker marker-blue" />
+                <div className="entry-body">
+                  <div className="entry-title">{e.title}</div>
+                  <div className="entry-meta">
+                    {e.time || "Termin"}
+                    {cName && ` · ${cName}`}
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <h2 className="section-title">Kommende 30 Tage</h2>
+      <div className="agenda">
+        {agenda.length === 0 && (
+          <div className="empty">Keine anstehenden Einträge.</div>
+        )}
+        {agenda.map((day) => (
+          <div key={day.iso} className="agenda-day">
+            <div className="agenda-date">{formatDate(day.iso)}</div>
+            <div className="agenda-entries">
+              {day.entries.deadline.map((d) => (
+                <button
+                  key={"d" + d.id}
+                  type="button"
+                  className="agenda-entry"
+                  onClick={() => onOpenDoc(d.id)}
+                >
+                  <span className="calendar-dot dot-red" />
+                  <span className="agenda-title">{d.title}</span>
+                  <span className="agenda-kind">Frist</span>
+                </button>
+              ))}
+              {day.entries.reminder.map((r) => (
+                <button
+                  key={"r" + r.id}
+                  type="button"
+                  className="agenda-entry"
+                  onClick={() => onOpenReminder(r.id)}
+                >
+                  <span className="calendar-dot dot-amber" />
+                  <span className="agenda-title">{r.title}</span>
+                  <span className="agenda-kind">Erinnerung</span>
+                </button>
+              ))}
+              {day.entries.event.map((e) => (
+                <button
+                  key={"e" + e.id}
+                  type="button"
+                  className="agenda-entry"
+                  onClick={() => onOpenEvent(e.id)}
+                >
+                  <span className="calendar-dot dot-blue" />
+                  <span className="agenda-title">{e.title}</span>
+                  <span className="agenda-kind">
+                    {e.time ? e.time : "Termin"}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -2167,6 +2665,19 @@ function loadReminders() {
   return [];
 }
 
+function loadEvents() {
+  try {
+    const raw = localStorage.getItem(EVENTS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch {
+    // ignore
+  }
+  return [];
+}
+
 function loadDocs() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -2209,6 +2720,7 @@ export default function App() {
   const [docs, setDocs] = useState(loadDocs);
   const [contacts, setContacts] = useState(loadContacts);
   const [reminders, setReminders] = useState(loadReminders);
+  const [events, setEvents] = useState(loadEvents);
   const [pendingResult, setPendingResult] = useState(null);
   const [categoryFilter, setCategoryFilter] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
@@ -2222,6 +2734,10 @@ export default function App() {
   const [reminderFormPrefill, setReminderFormPrefill] = useState(null);
   const [deadlineEditDocId, setDeadlineEditDocId] = useState(null);
   const [appealDocId, setAppealDocId] = useState(null);
+  const [selectedEventId, setSelectedEventId] = useState(null);
+  const [eventFormOpen, setEventFormOpen] = useState(false);
+  const [eventFormMode, setEventFormMode] = useState("add");
+  const [eventFormPrefill, setEventFormPrefill] = useState(null);
   const [disclaimerOpen, setDisclaimerOpen] = useState(loadDisclaimerOpen);
   const [onboardingDone, setOnboardingDone] = useState(loadOnboardingDone);
   const [userEmail, setUserEmail] = useState(loadUserEmail);
@@ -2251,6 +2767,14 @@ export default function App() {
   }, [reminders]);
 
   useEffect(() => {
+    try {
+      localStorage.setItem(EVENTS_KEY, JSON.stringify(events));
+    } catch {
+      // ignore
+    }
+  }, [events]);
+
+  useEffect(() => {
     if (!onboardingDone) return;
     sendDeadlineReminders(docs, reminders);
     // Only run when onboarding transitions to done (returning users on mount,
@@ -2261,7 +2785,7 @@ export default function App() {
   const selectedDoc = docs.find((d) => d.id === selectedId);
 
   function buildDocFromResult(result) {
-    const today = TODAY.toISOString().slice(0, 10);
+    const today = isoLocal(TODAY);
     const deadline = result.deadline || null;
     return {
       id: "d" + Date.now(),
@@ -2288,6 +2812,7 @@ export default function App() {
     if (!pendingResult) return;
     const doc = buildDocFromResult(pendingResult);
     const newReminders = [];
+    const newEvents = [];
     const noteParts = [];
     let contactPrefill = null;
 
@@ -2308,6 +2833,19 @@ export default function App() {
           date: a.value,
           done: false,
         });
+      } else if (a.type === "event" && a.value && typeof a.value === "object") {
+        const v = a.value;
+        if (v.title && v.date) {
+          newEvents.push({
+            id: "e" + Date.now() + Math.random().toString(36).slice(2, 6),
+            title: v.title,
+            date: v.date,
+            time: v.time || "",
+            notes: v.notes || "",
+            contactId: null,
+            docId: doc.id,
+          });
+        }
       } else if (a.type === "contact" && !contactPrefill) {
         const name = String(a.value);
         const existing = contacts.find(
@@ -2327,6 +2865,9 @@ export default function App() {
     setDocs((prev) => [doc, ...prev]);
     if (newReminders.length) {
       setReminders((prev) => [...newReminders, ...prev]);
+    }
+    if (newEvents.length) {
+      setEvents((prev) => [...newEvents, ...prev]);
     }
     setPendingResult(null);
 
@@ -2452,6 +2993,45 @@ export default function App() {
     if (id) setSelectedId(id);
   }
 
+  function openAddEvent(dateIso) {
+    setEventFormMode("add");
+    setSelectedEventId(null);
+    setEventFormPrefill(dateIso ? { date: dateIso } : null);
+    setEventFormOpen(true);
+  }
+
+  function openEditEvent() {
+    setEventFormMode("edit");
+    setEventFormPrefill(null);
+    setEventFormOpen(true);
+  }
+
+  function closeEventForm() {
+    setEventFormOpen(false);
+    setEventFormPrefill(null);
+  }
+
+  function saveEvent(data) {
+    if (eventFormMode === "edit" && selectedEventId) {
+      setEvents((prev) =>
+        prev.map((e) => (e.id === selectedEventId ? { ...e, ...data } : e))
+      );
+    } else {
+      setEvents((prev) => [
+        { id: "e" + Date.now(), ...data },
+        ...prev,
+      ]);
+    }
+    closeEventForm();
+  }
+
+  function deleteEvent() {
+    if (!selectedEventId) return;
+    if (!confirm("Termin wirklich löschen?")) return;
+    setEvents((prev) => prev.filter((e) => e.id !== selectedEventId));
+    setSelectedEventId(null);
+  }
+
   function deleteReminder() {
     if (!selectedReminderId) return;
     if (!confirm("Erinnerung wirklich löschen?")) return;
@@ -2554,6 +3134,18 @@ export default function App() {
             onOpenAppeal={openAppeal}
           />
         )}
+        {tab === "calendar" && (
+          <CalendarView
+            docs={docs}
+            reminders={reminders}
+            events={events}
+            contacts={contacts}
+            onOpenDoc={setSelectedId}
+            onOpenReminder={setSelectedReminderId}
+            onOpenEvent={setSelectedEventId}
+            onAddEvent={openAddEvent}
+          />
+        )}
         {tab === "scan" && (
           <ScanView
             docs={docs}
@@ -2654,6 +3246,34 @@ export default function App() {
           />
         );
       })()}
+
+      {selectedEventId && !eventFormOpen && (() => {
+        const e = events.find((x) => x.id === selectedEventId);
+        if (!e) return null;
+        const c = e.contactId ? contacts.find((x) => x.id === e.contactId) : null;
+        return (
+          <EventDetailModal
+            event={e}
+            contact={c}
+            onClose={() => setSelectedEventId(null)}
+            onEdit={openEditEvent}
+            onDelete={deleteEvent}
+          />
+        );
+      })()}
+
+      {eventFormOpen && (
+        <EventFormModal
+          initial={
+            eventFormMode === "edit"
+              ? events.find((e) => e.id === selectedEventId)
+              : eventFormPrefill
+          }
+          contacts={contacts}
+          onCancel={closeEventForm}
+          onSave={saveEvent}
+        />
+      )}
 
       {selectedContactId && !contactFormOpen && (() => {
         const c = contacts.find((x) => x.id === selectedContactId);
