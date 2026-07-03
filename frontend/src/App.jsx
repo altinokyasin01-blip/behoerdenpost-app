@@ -8,6 +8,7 @@ const DISCLAIMER_KEY = "disclaimer_shown";
 const ONBOARDING_KEY = "onboarding_done";
 const EMAIL_KEY = "user_email";
 const CONTACTS_KEY = "behoerdenpost_contacts";
+const REMINDERS_KEY = "behoerdenpost_reminders";
 
 const CONTACT_TYPES = [
   "Behörde",
@@ -17,6 +18,24 @@ const CONTACT_TYPES = [
   "Versicherung",
   "Sonstiges",
 ];
+
+const CATEGORY_TO_CONTACT_TYPE = {
+  Finanzamt: "Behörde",
+  Krankenkasse: "Versicherung",
+  Vermieter: "Vermieter",
+  Inkasso: "Sonstiges",
+  Versicherung: "Versicherung",
+  Sonstiges: "Sonstiges",
+};
+
+function formatAmount(v) {
+  if (v == null || v === "") return "";
+  if (typeof v === "string") return v;
+  return v.toLocaleString("de-DE", {
+    style: "currency",
+    currency: "EUR",
+  });
+}
 
 function isValidEmail(s) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s || "");
@@ -343,6 +362,120 @@ function DocumentModal({ doc, onClose, onToggleStatus }) {
   );
 }
 
+const ACTION_TYPE_LABEL = {
+  contact: "Kontakt",
+  reminder: "Erinnerung",
+  amount: "Betrag",
+  deadline: "Frist",
+  note: "Notiz",
+};
+
+function formatActionValue(action) {
+  if (action.value == null || action.value === "") return "";
+  if (action.type === "amount") {
+    const n = typeof action.value === "number" ? action.value : Number(action.value);
+    return Number.isFinite(n) ? formatAmount(n) : String(action.value);
+  }
+  if (action.type === "deadline" || action.type === "reminder") {
+    return formatDate(action.value);
+  }
+  return String(action.value);
+}
+
+function PostScanModal({ result, onConfirm, onSkip }) {
+  const actions = Array.isArray(result.actions) ? result.actions : [];
+
+  const [enabled, setEnabled] = useState(() => {
+    const map = {};
+    actions.forEach((a, i) => {
+      map[i] = a.priority !== "low";
+    });
+    return map;
+  });
+
+  function toggle(i) {
+    setEnabled((prev) => ({ ...prev, [i]: !prev[i] }));
+  }
+
+  function handleConfirm() {
+    onConfirm(actions.filter((_, i) => enabled[i]));
+  }
+
+  return (
+    <Modal onClose={onSkip}>
+      <div className="detail">
+        <div className="detail-head">
+          <div className="detail-title">
+            Erkannt: {result.documentType || "Dokument"}
+          </div>
+          {result.category && (
+            <div className="detail-badges">
+              <span className="badge badge-neutral">{result.category}</span>
+              {result.sender && (
+                <span className="detail-sender">{result.sender}</span>
+              )}
+            </div>
+          )}
+          {result.summary && (
+            <div className="postscan-summary">{result.summary}</div>
+          )}
+        </div>
+
+        <h3 className="detail-heading">Vorgeschlagene Aktionen</h3>
+        <div className="action-list">
+          {actions.length === 0 && (
+            <div className="empty">
+              Keine zusätzlichen Aktionen vorgeschlagen — Dokument wird gespeichert.
+            </div>
+          )}
+          {actions.map((a, i) => {
+            const displayValue = formatActionValue(a);
+            const isOn = !!enabled[i];
+            return (
+              <label
+                key={i}
+                className={`action-item priority-${a.priority} ${isOn ? "on" : ""}`}
+              >
+                <input
+                  type="checkbox"
+                  className="action-check"
+                  checked={isOn}
+                  onChange={() => toggle(i)}
+                />
+                <div className="action-body">
+                  <div className="action-row">
+                    <span className={`action-tag tag-${a.type}`}>
+                      {ACTION_TYPE_LABEL[a.type] || a.type}
+                    </span>
+                    <span className={`priority-dot priority-${a.priority}`} />
+                  </div>
+                  <div className="action-title">{a.label}</div>
+                  {displayValue && (
+                    <div className="action-desc">{displayValue}</div>
+                  )}
+                </div>
+              </label>
+            );
+          })}
+        </div>
+
+        <div className="detail-actions detail-actions-row">
+          <button type="button" className="btn-secondary" onClick={onSkip}>
+            Überspringen
+          </button>
+          <button
+            type="button"
+            className="btn-primary btn-primary-block"
+            onClick={handleConfirm}
+          >
+            Übernehmen
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 function DisclaimerModal({ onAcknowledge }) {
   return (
     <Modal onClose={() => {}} dismissable={false}>
@@ -538,11 +671,15 @@ function BottomNav({ active, onChange }) {
   );
 }
 
-function HomeView({ docs, onNav, onOpenDoc }) {
+function HomeView({ docs, reminders, onNav, onOpenDoc, onToggleReminder }) {
   const openDeadlines = docs
     .filter((d) => d.deadline && d.status !== "Erledigt")
     .sort((a, b) => a.deadline.localeCompare(b.deadline));
   const openCount = docs.filter((d) => d.status === "Offen").length;
+  const sortedReminders = [...(reminders || [])].sort((a, b) => {
+    if (a.done !== b.done) return a.done ? 1 : -1;
+    return (a.date || "").localeCompare(b.date || "");
+  });
 
   return (
     <div className="view">
@@ -601,9 +738,53 @@ function HomeView({ docs, onNav, onOpenDoc }) {
               </div>
               <div className="deadline-foot">
                 Fällig am {formatDate(d.deadline)}
-                {d.amount && ` · ${d.amount}`}
+                {d.amount != null && ` · ${formatAmount(d.amount)}`}
               </div>
             </button>
+          );
+        })}
+      </div>
+
+      <h2 className="section-title">Erinnerungen</h2>
+      <div className="reminder-list">
+        {sortedReminders.length === 0 && (
+          <div className="empty">Keine Erinnerungen.</div>
+        )}
+        {sortedReminders.map((r) => {
+          const days = daysUntil(r.date);
+          const level = r.done ? "gray" : deadlineLevel(days);
+          return (
+            <div
+              key={r.id}
+              className={`card reminder-card ${r.done ? "done" : ""}`}
+            >
+              <button
+                type="button"
+                className={`reminder-check ${r.done ? "checked" : ""}`}
+                onClick={() => onToggleReminder(r.id)}
+                aria-label={r.done ? "Als offen markieren" : "Als erledigt markieren"}
+              >
+                {r.done ? "✓" : ""}
+              </button>
+              <button
+                type="button"
+                className="reminder-body"
+                onClick={() => r.docId && onOpenDoc(r.docId)}
+              >
+                <div className="reminder-title">{r.title}</div>
+                <div className={`reminder-meta days-${level}`}>
+                  {formatDate(r.date)}
+                  {" · "}
+                  {r.done
+                    ? "erledigt"
+                    : days > 0
+                    ? `in ${days} Tag${days === 1 ? "" : "en"}`
+                    : days === 0
+                    ? "heute"
+                    : `${Math.abs(days)} Tag${Math.abs(days) === 1 ? "" : "e"} überfällig`}
+                </div>
+              </button>
+            </div>
           );
         })}
       </div>
@@ -623,7 +804,7 @@ function HomeView({ docs, onNav, onOpenDoc }) {
   );
 }
 
-function ScanView({ docs, onAnalyzed, onOpenDoc }) {
+function ScanView({ docs, onScanned, onOpenDoc }) {
   const [dragging, setDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState(null);
@@ -646,18 +827,7 @@ function ScanView({ docs, onAnalyzed, onOpenDoc }) {
         throw new Error(data.error || `HTTP ${res.status}`);
       }
       const result = await res.json();
-      const today = new Date().toISOString().slice(0, 10);
-      onAnalyzed({
-        id: "d" + Date.now(),
-        title: result.documentType || file.name,
-        sender: "Scan · " + file.name,
-        category: result.category || "Sonstiges",
-        date: today,
-        deadline: result.deadline,
-        summary: result.summary,
-        replyDraft: result.replyDraft,
-        status: "Offen",
-      });
+      onScanned({ ...result, filename: file.name });
     } catch (e) {
       setError(e.message);
     } finally {
@@ -1020,21 +1190,24 @@ function ContactsView({ contacts, onAdd, onOpenDetail }) {
   );
 }
 
+const CONTACT_DEFAULTS = {
+  name: "",
+  type: "Sonstiges",
+  iban: "",
+  bic: "",
+  email: "",
+  phone: "",
+  street: "",
+  zip: "",
+  city: "",
+  notes: "",
+};
+
 function ContactFormModal({ initial, onSave, onCancel }) {
-  const [form, setForm] = useState(
-    initial || {
-      name: "",
-      type: "Sonstiges",
-      iban: "",
-      bic: "",
-      email: "",
-      phone: "",
-      street: "",
-      zip: "",
-      city: "",
-      notes: "",
-    }
-  );
+  const [form, setForm] = useState(() => ({
+    ...CONTACT_DEFAULTS,
+    ...(initial || {}),
+  }));
   const [error, setError] = useState(null);
 
   function set(field, value) {
@@ -1309,6 +1482,19 @@ function loadContacts() {
   return [];
 }
 
+function loadReminders() {
+  try {
+    const raw = localStorage.getItem(REMINDERS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch {
+    // ignore
+  }
+  return [];
+}
+
 function loadDocs() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -1350,11 +1536,14 @@ export default function App() {
   const [tab, setTab] = useState("home");
   const [docs, setDocs] = useState(loadDocs);
   const [contacts, setContacts] = useState(loadContacts);
+  const [reminders, setReminders] = useState(loadReminders);
+  const [pendingResult, setPendingResult] = useState(null);
   const [categoryFilter, setCategoryFilter] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
   const [selectedContactId, setSelectedContactId] = useState(null);
   const [contactFormOpen, setContactFormOpen] = useState(false);
   const [contactFormMode, setContactFormMode] = useState("add");
+  const [contactFormPrefill, setContactFormPrefill] = useState(null);
   const [disclaimerOpen, setDisclaimerOpen] = useState(loadDisclaimerOpen);
   const [onboardingDone, setOnboardingDone] = useState(loadOnboardingDone);
   const [userEmail, setUserEmail] = useState(loadUserEmail);
@@ -1376,6 +1565,14 @@ export default function App() {
   }, [contacts]);
 
   useEffect(() => {
+    try {
+      localStorage.setItem(REMINDERS_KEY, JSON.stringify(reminders));
+    } catch {
+      // ignore
+    }
+  }, [reminders]);
+
+  useEffect(() => {
     if (!onboardingDone) return;
     sendDeadlineReminders(docs);
     // Only run when onboarding transitions to done (returning users on mount,
@@ -1385,8 +1582,87 @@ export default function App() {
 
   const selectedDoc = docs.find((d) => d.id === selectedId);
 
-  function addDoc(doc) {
+  function buildDocFromResult(result) {
+    const today = TODAY.toISOString().slice(0, 10);
+    return {
+      id: "d" + Date.now(),
+      title: result.documentType || result.filename || "Dokument",
+      sender: result.sender || "",
+      category: result.category || "Sonstiges",
+      date: today,
+      deadline: result.deadline || null,
+      amount: result.amount ?? null,
+      summary: result.summary || null,
+      replyDraft: result.replyDraft || null,
+      status: "Offen",
+      notes: null,
+      filename: result.filename || null,
+    };
+  }
+
+  function handlePostScanConfirm(chosenActions) {
+    if (!pendingResult) return;
+    const doc = buildDocFromResult(pendingResult);
+    const newReminders = [];
+    const noteParts = [];
+    let contactPrefill = null;
+
+    for (const a of chosenActions) {
+      if (!a.value) continue;
+      if (a.type === "amount") {
+        const n = typeof a.value === "number" ? a.value : Number(a.value);
+        if (Number.isFinite(n)) doc.amount = n;
+      } else if (a.type === "deadline") {
+        doc.deadline = a.value;
+      } else if (a.type === "note") {
+        noteParts.push(String(a.value));
+      } else if (a.type === "reminder") {
+        newReminders.push({
+          id: "r" + Date.now() + Math.random().toString(36).slice(2, 6),
+          docId: doc.id,
+          title: doc.title,
+          date: a.value,
+          done: false,
+        });
+      } else if (a.type === "contact" && !contactPrefill) {
+        const name = String(a.value);
+        const existing = contacts.find(
+          (c) => c.name.toLowerCase() === name.toLowerCase()
+        );
+        if (!existing) {
+          contactPrefill = {
+            name,
+            type: CATEGORY_TO_CONTACT_TYPE[doc.category] || "Sonstiges",
+          };
+        }
+      }
+    }
+
+    if (noteParts.length) doc.notes = noteParts.join("\n\n");
+
     setDocs((prev) => [doc, ...prev]);
+    if (newReminders.length) {
+      setReminders((prev) => [...newReminders, ...prev]);
+    }
+    setPendingResult(null);
+
+    if (contactPrefill) {
+      setContactFormMode("add");
+      setContactFormPrefill(contactPrefill);
+      setContactFormOpen(true);
+    }
+  }
+
+  function handlePostScanSkip() {
+    if (!pendingResult) return;
+    setDocs((prev) => [buildDocFromResult(pendingResult), ...prev]);
+    setPendingResult(null);
+  }
+
+  function toggleReminder(id) {
+    setReminders((prev) =>
+      prev.map((r) => (r.id === id ? { ...r, done: !r.done } : r))
+    );
   }
 
   function toggleStatus(id) {
@@ -1411,7 +1687,13 @@ export default function App() {
 
   function openAddContact() {
     setContactFormMode("add");
+    setContactFormPrefill(null);
     setContactFormOpen(true);
+  }
+
+  function closeContactForm() {
+    setContactFormOpen(false);
+    setContactFormPrefill(null);
   }
 
   function saveContact(data) {
@@ -1422,7 +1704,7 @@ export default function App() {
     } else {
       setContacts((prev) => [{ ...data, id: "c" + Date.now() }, ...prev]);
     }
-    setContactFormOpen(false);
+    closeContactForm();
   }
 
   function deleteContact() {
@@ -1472,14 +1754,16 @@ export default function App() {
         {tab === "home" && (
           <HomeView
             docs={docs}
+            reminders={reminders}
             onNav={navigate}
             onOpenDoc={setSelectedId}
+            onToggleReminder={toggleReminder}
           />
         )}
         {tab === "scan" && (
           <ScanView
             docs={docs}
-            onAnalyzed={addDoc}
+            onScanned={setPendingResult}
             onOpenDoc={setSelectedId}
           />
         )}
@@ -1538,10 +1822,18 @@ export default function App() {
           initial={
             contactFormMode === "edit"
               ? contacts.find((c) => c.id === selectedContactId)
-              : null
+              : contactFormPrefill
           }
-          onCancel={() => setContactFormOpen(false)}
+          onCancel={closeContactForm}
           onSave={saveContact}
+        />
+      )}
+
+      {pendingResult && !contactFormOpen && (
+        <PostScanModal
+          result={pendingResult}
+          onConfirm={handlePostScanConfirm}
+          onSkip={handlePostScanSkip}
         />
       )}
 
