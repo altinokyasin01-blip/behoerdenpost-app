@@ -189,4 +189,81 @@ function normalizeActions(raw) {
   return cleaned;
 }
 
-module.exports = { analyzeDocument };
+const APPEAL_CHANCES = ["hoch", "mittel", "gering", "keine"];
+
+const APPEAL_SYSTEM_PROMPT = `Du beurteilst kurz und ehrlich die Erfolgsaussicht eines
+Widerspruchs gegen einen deutschen Behördenbescheid — basierend auf den
+Metadaten, die dir übergeben werden. Antworte AUSSCHLIESSLICH mit einem
+JSON-Objekt (keine Codeblöcke, kein Fließtext davor/danach):
+
+{
+  "worthwhile": true | false,
+  "reasoning": "2-3 Sätze auf Deutsch, warum ein Widerspruch sinnvoll oder wenig aussichtsreich ist. Einfache Sprache, keine Aufzählung.",
+  "successChance": "hoch | mittel | gering | keine",
+  "tip": "Optional: ein konkreter Hinweis, was der Nutzer beilegen oder erwähnen sollte. null, wenn kein guter Tipp einfällt."
+}
+
+Regeln:
+- Sei realistisch, nicht ermutigend um jeden Preis.
+- worthwhile=false, wenn successChance "gering" oder "keine" ist.
+- reasoning bezieht sich auf typische Fälle dieses Dokumenttyps — nicht auf
+  konkrete Beweismittel, die du nicht kennst.
+- Kein Rechtsrat, keine Paragraphen. Kein Disclaimer im Text — der wird
+  im Frontend ergänzt.`;
+
+async function analyzeAppeal({ documentType, summary, deadlineType }) {
+  const context = [
+    documentType ? `Dokumenttyp: ${documentType}` : null,
+    deadlineType ? `Frist-Typ: ${deadlineType}` : null,
+    summary ? `Zusammenfassung:\n${summary}` : null,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+
+  const response = await getClient().messages.create({
+    model: MODEL,
+    max_tokens: 512,
+    system: APPEAL_SYSTEM_PROMPT,
+    messages: [
+      {
+        role: "user",
+        content:
+          (context || "Keine weiteren Metadaten verfügbar.") +
+          "\n\nGib jetzt die JSON-Einschätzung.",
+      },
+    ],
+  });
+
+  const text = response.content
+    .filter((block) => block.type === "text")
+    .map((block) => block.text)
+    .join("")
+    .trim();
+
+  const jsonStart = text.indexOf("{");
+  const jsonEnd = text.lastIndexOf("}");
+  if (jsonStart === -1 || jsonEnd === -1) {
+    throw new Error("Claude appeal response did not contain JSON");
+  }
+  const parsed = JSON.parse(text.slice(jsonStart, jsonEnd + 1));
+
+  const successChance = APPEAL_CHANCES.includes(parsed.successChance)
+    ? parsed.successChance
+    : "mittel";
+  const worthwhile =
+    typeof parsed.worthwhile === "boolean"
+      ? parsed.worthwhile
+      : successChance === "hoch" || successChance === "mittel";
+
+  return {
+    worthwhile,
+    reasoning: typeof parsed.reasoning === "string" ? parsed.reasoning.trim() : "",
+    successChance,
+    tip:
+      typeof parsed.tip === "string" && parsed.tip.trim()
+        ? parsed.tip.trim()
+        : null,
+  };
+}
+
+module.exports = { analyzeDocument, analyzeAppeal };

@@ -39,6 +39,16 @@ const DEADLINE_TYPE_LABEL = {
 
 const REMINDER_DAYS_BEFORE_OPTIONS = [0, 1, 3, 7];
 
+function addDays(iso, delta) {
+  const d = new Date(iso + "T00:00:00");
+  d.setDate(d.getDate() + delta);
+  return d.toISOString().slice(0, 10);
+}
+
+function todayIso() {
+  return TODAY.toISOString().slice(0, 10);
+}
+
 function formatAmount(v) {
   if (v == null || v === "") return "";
   if (typeof v === "string") return v;
@@ -874,6 +884,137 @@ function ReminderDetailModal({
   );
 }
 
+function AppealModal({
+  doc,
+  apiBase,
+  onClose,
+  onScheduleReminder,
+  onShowReplyDraft,
+}) {
+  const [analysis, setAnalysis] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function run() {
+      try {
+        const res = await fetch(`${apiBase}/api/appeal`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            documentType: doc.title,
+            summary: doc.summary,
+            deadlineType: doc.deadlineType,
+          }),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error || `HTTP ${res.status}`);
+        }
+        const data = await res.json();
+        if (!cancelled) setAnalysis(data);
+      } catch (e) {
+        if (!cancelled) setError(e.message);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    run();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const days = doc.deadline ? daysUntil(doc.deadline) : null;
+  const worthwhile = analysis ? analysis.worthwhile !== false : true;
+
+  return (
+    <Modal onClose={onClose}>
+      <div className="detail">
+        <div className="detail-head">
+          <div className="detail-title">Möchtest du Widerspruch einlegen?</div>
+          {doc.deadline && (
+            <div className="detail-sender">
+              Frist {formatDate(doc.deadline)}
+              {days != null && (
+                <>
+                  {" · "}
+                  {days > 0
+                    ? `noch ${days} Tag${days === 1 ? "" : "e"}`
+                    : days === 0
+                    ? "heute fällig"
+                    : "überfällig"}
+                </>
+              )}
+            </div>
+          )}
+        </div>
+
+        {loading && (
+          <div className="appeal-loading">
+            <div className="loading-dots" aria-hidden="true">
+              <span />
+              <span />
+              <span />
+            </div>
+            <div>Claude prüft die Erfolgsaussicht…</div>
+          </div>
+        )}
+
+        {error && (
+          <div className="alert">
+            Einschätzung konnte nicht geladen werden ({error}).
+          </div>
+        )}
+
+        {analysis && (
+          <section className="detail-section appeal-analysis">
+            <p className="detail-text">{analysis.reasoning}</p>
+            <div className="appeal-chance-row">
+              <span className="appeal-chance-label">Erfolgsaussicht</span>
+              <span className={`appeal-badge appeal-badge-${analysis.successChance}`}>
+                {analysis.successChance}
+              </span>
+            </div>
+            {analysis.tip && (
+              <div className="appeal-tip">{analysis.tip}</div>
+            )}
+          </section>
+        )}
+
+        <div className="appeal-actions">
+          {!loading && !error && !worthwhile && (
+            <div className="appeal-warning">Trotzdem widersprechen?</div>
+          )}
+          <button
+            type="button"
+            className={`btn-secondary ${!loading && !worthwhile ? "btn-dimmed" : ""}`}
+            onClick={onScheduleReminder}
+            disabled={loading}
+          >
+            Ja, erinnere mich früher
+          </button>
+          <button
+            type="button"
+            className={`btn-secondary ${!loading && !worthwhile ? "btn-dimmed" : ""}`}
+            onClick={onShowReplyDraft}
+            disabled={loading || !doc.replyDraft}
+          >
+            Antwortentwurf anzeigen
+          </button>
+        </div>
+
+        <div className="appeal-decision">Die Entscheidung liegt bei dir.</div>
+        <div className="appeal-disclaimer">
+          Einschätzung basiert auf KI, kein Rechtsrat.
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 function DisclaimerModal({ onAcknowledge }) {
   return (
     <Modal onClose={() => {}} dismissable={false}>
@@ -1079,6 +1220,7 @@ function HomeView({
   onToggleReminder,
   onToggleDocStatus,
   onEditDeadline,
+  onOpenAppeal,
 }) {
   const [deadlineFilter, setDeadlineFilter] = useState("all");
 
@@ -1145,6 +1287,12 @@ function HomeView({
         {openDeadlines.map((d) => {
           const days = daysUntil(d.deadline);
           const level = deadlineLevel(days);
+          const isAppealCase = d.deadlineType === "widerspruch";
+          const appealPlanned =
+            isAppealCase &&
+            reminders.some(
+              (r) => r.docId === d.id && r.kind === "appeal" && !r.done
+            );
           return (
             <div key={d.id} className="card deadline-card">
               <button
@@ -1156,7 +1304,13 @@ function HomeView({
                   <div className="deadline-info">
                     <div className="deadline-title-row">
                       <span className="deadline-title">{d.title}</span>
-                      <DeadlineTypeBadge type={d.deadlineType} />
+                      {appealPlanned ? (
+                        <span className="appeal-planned-badge">
+                          Widerspruch geplant
+                        </span>
+                      ) : (
+                        <DeadlineTypeBadge type={d.deadlineType} />
+                      )}
                     </div>
                     <div className="deadline-sender">{d.sender}</div>
                   </div>
@@ -1179,6 +1333,20 @@ function HomeView({
                   {d.amount != null && ` · ${formatAmount(d.amount)}`}
                 </div>
               </button>
+              {isAppealCase && !appealPlanned && (
+                <div className="deadline-appeal-row">
+                  <button
+                    type="button"
+                    className="appeal-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onOpenAppeal(d.id);
+                    }}
+                  >
+                    Widersprechen?
+                  </button>
+                </div>
+              )}
               <CardMenu
                 items={[
                   {
@@ -2051,7 +2219,9 @@ export default function App() {
   const [selectedReminderId, setSelectedReminderId] = useState(null);
   const [reminderFormOpen, setReminderFormOpen] = useState(false);
   const [reminderFormMode, setReminderFormMode] = useState("add");
+  const [reminderFormPrefill, setReminderFormPrefill] = useState(null);
   const [deadlineEditDocId, setDeadlineEditDocId] = useState(null);
+  const [appealDocId, setAppealDocId] = useState(null);
   const [disclaimerOpen, setDisclaimerOpen] = useState(loadDisclaimerOpen);
   const [onboardingDone, setOnboardingDone] = useState(loadOnboardingDone);
   const [userEmail, setUserEmail] = useState(loadUserEmail);
@@ -2216,15 +2386,22 @@ export default function App() {
     setDeadlineEditDocId(null);
   }
 
-  function openAddReminder() {
+  function openAddReminder(prefill = null) {
     setReminderFormMode("add");
     setSelectedReminderId(null);
+    setReminderFormPrefill(prefill);
     setReminderFormOpen(true);
   }
 
   function openEditReminder() {
     setReminderFormMode("edit");
+    setReminderFormPrefill(null);
     setReminderFormOpen(true);
+  }
+
+  function closeReminderForm() {
+    setReminderFormOpen(false);
+    setReminderFormPrefill(null);
   }
 
   function saveReminder(data) {
@@ -2244,7 +2421,35 @@ export default function App() {
         ...prev,
       ]);
     }
-    setReminderFormOpen(false);
+    closeReminderForm();
+  }
+
+  function openAppeal(docId) {
+    setAppealDocId(docId);
+  }
+
+  function handleAppealScheduleReminder() {
+    const d = docs.find((x) => x.id === appealDocId);
+    if (!d) return;
+    const targetDate = d.deadline
+      ? addDays(d.deadline, -7)
+      : todayIso();
+    const finalDate =
+      targetDate < todayIso() ? todayIso() : targetDate;
+    setAppealDocId(null);
+    openAddReminder({
+      title: `Widerspruch vorbereiten: ${d.title}`,
+      date: finalDate,
+      docId: d.id,
+      daysBefore: 3,
+      kind: "appeal",
+    });
+  }
+
+  function handleAppealShowReplyDraft() {
+    const id = appealDocId;
+    setAppealDocId(null);
+    if (id) setSelectedId(id);
   }
 
   function deleteReminder() {
@@ -2342,10 +2547,11 @@ export default function App() {
             onNav={navigate}
             onOpenDoc={setSelectedId}
             onOpenReminder={setSelectedReminderId}
-            onAddReminder={openAddReminder}
+            onAddReminder={() => openAddReminder()}
             onToggleReminder={toggleReminder}
             onToggleDocStatus={toggleStatus}
             onEditDeadline={openDeadlineEdit}
+            onOpenAppeal={openAppeal}
           />
         )}
         {tab === "scan" && (
@@ -2427,13 +2633,27 @@ export default function App() {
           initial={
             reminderFormMode === "edit"
               ? reminders.find((r) => r.id === selectedReminderId)
-              : null
+              : reminderFormPrefill
           }
           docs={docs}
-          onCancel={() => setReminderFormOpen(false)}
+          onCancel={closeReminderForm}
           onSave={saveReminder}
         />
       )}
+
+      {appealDocId && (() => {
+        const d = docs.find((x) => x.id === appealDocId);
+        if (!d) return null;
+        return (
+          <AppealModal
+            doc={d}
+            apiBase={API_BASE}
+            onClose={() => setAppealDocId(null)}
+            onScheduleReminder={handleAppealScheduleReminder}
+            onShowReplyDraft={handleAppealShowReplyDraft}
+          />
+        );
+      })()}
 
       {selectedContactId && !contactFormOpen && (() => {
         const c = contacts.find((x) => x.id === selectedContactId);

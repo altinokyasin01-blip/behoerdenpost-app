@@ -3,6 +3,7 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const analyzeRouter = require("./routes/analyze");
+const appealRouter = require("./routes/appeal");
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -23,6 +24,7 @@ app.use('/api/analyze', (req, res, next) => {
 });
 
 app.use("/api/analyze", analyzeRouter);
+app.use("/api/appeal", appealRouter);
 
 app.use((err, _req, res, _next) => {
   console.error(err);
