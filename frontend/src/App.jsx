@@ -148,50 +148,7 @@ const NAV_ITEMS = [
   { id: "archive", label: "Archiv", Icon: IconArchive },
 ];
 
-const INITIAL_DOCS = [
-  {
-    id: "d1",
-    title: "Mahnung Einkommensteuer 2024",
-    sender: "Finanzamt München-Mitte",
-    category: "Finanzamt",
-    date: "2026-06-24",
-    deadline: "2026-07-05",
-    amount: "230,00 €",
-    summary:
-      "Letztmalige Zahlungsaufforderung über 230,00 €. Bei Nichtzahlung drohen Vollstreckungsmaßnahmen.",
-    status: "Offen",
-  },
-  {
-    id: "d2",
-    title: "Beitragsanpassung 2026",
-    sender: "Techniker Krankenkasse",
-    category: "Krankenkasse",
-    date: "2026-06-15",
-    deadline: "2026-07-12",
-    summary:
-      "Der Beitragssatz erhöht sich zum 01.08.2026 um 0,3 Prozentpunkte. Sonderkündigungsrecht besteht.",
-    status: "Pending",
-  },
-  {
-    id: "d3",
-    title: "Nebenkostenabrechnung 2025",
-    sender: "Hausverwaltung Schmidt GmbH",
-    category: "Vermieter",
-    date: "2026-05-20",
-    amount: "342,00 €",
-    summary: "Nachzahlung in Höhe von 342 € am 15.06.2026 überwiesen.",
-    status: "Erledigt",
-  },
-  {
-    id: "d4",
-    title: "KFZ-Versicherung Verlängerung",
-    sender: "HUK-Coburg",
-    category: "Versicherung",
-    date: "2026-04-10",
-    summary: "Vertragsverlängerung für 2026/27 bestätigt.",
-    status: "Erledigt",
-  },
-];
+const INITIAL_DOCS = [];
 
 function daysUntil(iso) {
   const d = new Date(iso + "T00:00:00");
