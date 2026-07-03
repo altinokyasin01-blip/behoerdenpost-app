@@ -28,6 +28,17 @@ const CATEGORY_TO_CONTACT_TYPE = {
   Sonstiges: "Sonstiges",
 };
 
+const DEADLINE_TYPES = ["zahlung", "antwort", "widerspruch", "abgabe", "sonstiges"];
+const DEADLINE_TYPE_LABEL = {
+  zahlung: "Zahlung",
+  antwort: "Antwort",
+  widerspruch: "Widerspruch",
+  abgabe: "Abgabe",
+  sonstiges: "Sonstiges",
+};
+
+const REMINDER_DAYS_BEFORE_OPTIONS = [0, 1, 3, 7];
+
 function formatAmount(v) {
   if (v == null || v === "") return "";
   if (typeof v === "string") return v;
@@ -41,7 +52,7 @@ function isValidEmail(s) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s || "");
 }
 
-function sendDeadlineReminders(docs) {
+function sendDeadlineReminders(docs, reminders = []) {
   if (typeof Notification === "undefined") return;
   if (Notification.permission !== "granted") return;
   const today = TODAY.toISOString().slice(0, 10);
@@ -58,6 +69,28 @@ function sendDeadlineReminders(docs) {
       localStorage.setItem(key, "1");
     } catch {
       // ignore per-doc failures
+    }
+  }
+  for (const r of reminders) {
+    if (r.done || !r.date) continue;
+    const days = daysUntil(r.date);
+    const daysBefore = r.daysBefore ?? 0;
+    if (days > daysBefore) continue;
+    const key = `notified_${r.id}_${today}`;
+    try {
+      if (localStorage.getItem(key)) continue;
+      new Notification("Erinnerung", {
+        body: `${r.title} — ${
+          days > 0
+            ? `in ${days} Tag${days === 1 ? "" : "en"}`
+            : days === 0
+            ? "heute"
+            : "überfällig"
+        }`,
+      });
+      localStorage.setItem(key, "1");
+    } catch {
+      // ignore per-reminder failures
     }
   }
 }
@@ -253,7 +286,13 @@ function Modal({ onClose, children, dismissable = true }) {
   );
 }
 
-function DocumentModal({ doc, onClose, onToggleStatus }) {
+function DocumentModal({
+  doc,
+  onClose,
+  onToggleStatus,
+  onEditDeadline,
+  onDelete,
+}) {
   const [copied, setCopied] = useState(false);
   const days = doc.deadline ? daysUntil(doc.deadline) : null;
   const level = days !== null ? deadlineLevel(days) : null;
@@ -287,7 +326,10 @@ function DocumentModal({ doc, onClose, onToggleStatus }) {
 
         {doc.deadline && (
           <div className={`detail-deadline detail-deadline-${level}`}>
-            <div className="detail-deadline-label">Frist</div>
+            <div className="detail-deadline-label">
+              Frist
+              <DeadlineTypeBadge type={doc.deadlineType} />
+            </div>
             <div className="detail-deadline-date">
               {formatDate(doc.deadline)}
             </div>
@@ -348,7 +390,7 @@ function DocumentModal({ doc, onClose, onToggleStatus }) {
           </div>
         )}
 
-        <div className="detail-actions">
+        <div className="detail-actions detail-actions-stack">
           <button
             type="button"
             className={`btn-status ${isDone ? "btn-status-reopen" : "btn-status-done"}`}
@@ -356,6 +398,22 @@ function DocumentModal({ doc, onClose, onToggleStatus }) {
           >
             {isDone ? "Als offen markieren" : "Als erledigt markieren"}
           </button>
+          <div className="detail-actions-row">
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={onEditDeadline}
+            >
+              {doc.deadline ? "Frist bearbeiten" : "Frist hinzufügen"}
+            </button>
+            <button
+              type="button"
+              className="btn-secondary btn-danger"
+              onClick={onDelete}
+            >
+              Löschen
+            </button>
+          </div>
         </div>
       </div>
     </Modal>
@@ -469,6 +527,346 @@ function PostScanModal({ result, onConfirm, onSkip }) {
             onClick={handleConfirm}
           >
             Übernehmen
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function DeadlineTypeBadge({ type }) {
+  if (!type) return null;
+  return (
+    <span className={`deadline-type-badge deadline-type-${type}`}>
+      {DEADLINE_TYPE_LABEL[type] || type}
+    </span>
+  );
+}
+
+function CardMenu({ items, ariaLabel = "Menü" }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDoc(e) {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    }
+    function onKey(e) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", onDoc);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  return (
+    <div className="card-menu" ref={ref}>
+      <button
+        type="button"
+        className="card-menu-btn"
+        aria-label={ariaLabel}
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen((v) => !v);
+        }}
+      >
+        ⋯
+      </button>
+      {open && (
+        <div className="card-menu-popup">
+          {items.map((it, i) => (
+            <button
+              key={i}
+              type="button"
+              className="card-menu-item"
+              onClick={(e) => {
+                e.stopPropagation();
+                setOpen(false);
+                it.onClick();
+              }}
+            >
+              {it.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DeadlineEditModal({ doc, onSave, onCancel }) {
+  const [date, setDate] = useState(doc.deadline || "");
+  const [type, setType] = useState(doc.deadlineType || "sonstiges");
+
+  function submit(e) {
+    e.preventDefault();
+    onSave({
+      deadline: date || null,
+      deadlineType: date ? type : null,
+    });
+  }
+
+  return (
+    <Modal onClose={onCancel}>
+      <form onSubmit={submit} className="detail">
+        <div className="detail-head">
+          <div className="detail-title">
+            {doc.deadline ? "Frist bearbeiten" : "Frist hinzufügen"}
+          </div>
+        </div>
+
+        <div className="form-field">
+          <label>Datum</label>
+          <input
+            type="date"
+            className="form-input"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            autoFocus
+          />
+        </div>
+
+        <div className="form-field">
+          <label>Typ</label>
+          <select
+            className="form-input"
+            value={type}
+            onChange={(e) => setType(e.target.value)}
+            disabled={!date}
+          >
+            {DEADLINE_TYPES.map((t) => (
+              <option key={t} value={t}>
+                {DEADLINE_TYPE_LABEL[t]}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="form-actions">
+          <button type="button" className="btn-secondary" onClick={onCancel}>
+            Abbrechen
+          </button>
+          <button type="submit" className="btn-primary btn-primary-block">
+            Speichern
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function ReminderFormModal({ initial, docs, onSave, onCancel }) {
+  const [form, setForm] = useState(() => ({
+    title: "",
+    date: "",
+    docId: null,
+    daysBefore: 3,
+    notes: "",
+    ...(initial || {}),
+  }));
+  const [error, setError] = useState(null);
+
+  function set(field, value) {
+    setForm((f) => ({ ...f, [field]: value }));
+    setError(null);
+  }
+
+  function submit(e) {
+    e.preventDefault();
+    if (!form.title.trim()) {
+      setError("Titel ist ein Pflichtfeld.");
+      return;
+    }
+    if (!form.date) {
+      setError("Datum ist ein Pflichtfeld.");
+      return;
+    }
+    onSave({
+      ...form,
+      title: form.title.trim(),
+      notes: form.notes ? form.notes.trim() : "",
+    });
+  }
+
+  return (
+    <Modal onClose={onCancel}>
+      <form onSubmit={submit} className="detail">
+        <div className="detail-head">
+          <div className="detail-title">
+            {initial ? "Erinnerung bearbeiten" : "Erinnerung hinzufügen"}
+          </div>
+        </div>
+
+        <div className="form-field">
+          <label>Titel *</label>
+          <input
+            type="text"
+            className="form-input"
+            value={form.title}
+            onChange={(e) => set("title", e.target.value)}
+            autoFocus
+          />
+        </div>
+
+        <div className="form-field">
+          <label>Datum *</label>
+          <input
+            type="date"
+            className="form-input"
+            value={form.date}
+            onChange={(e) => set("date", e.target.value)}
+          />
+        </div>
+
+        <div className="form-field">
+          <label>Verknüpftes Dokument</label>
+          <select
+            className="form-input"
+            value={form.docId || ""}
+            onChange={(e) => set("docId", e.target.value || null)}
+          >
+            <option value="">— Kein Dokument —</option>
+            {docs.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.title}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="form-field">
+          <label>Erinnerung vorher</label>
+          <div className="filter-pills">
+            {REMINDER_DAYS_BEFORE_OPTIONS.map((n) => (
+              <button
+                key={n}
+                type="button"
+                className={`pill ${form.daysBefore === n ? "active" : ""}`}
+                onClick={() => set("daysBefore", n)}
+              >
+                {n === 0 ? "am Tag" : `${n} Tag${n === 1 ? "" : "e"} vorher`}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="form-field">
+          <label>Notiz</label>
+          <textarea
+            className="form-input form-textarea"
+            rows={3}
+            value={form.notes || ""}
+            onChange={(e) => set("notes", e.target.value)}
+          />
+        </div>
+
+        {error && <div className="onboarding-error">{error}</div>}
+
+        <div className="form-actions">
+          <button type="button" className="btn-secondary" onClick={onCancel}>
+            Abbrechen
+          </button>
+          <button type="submit" className="btn-primary btn-primary-block">
+            Speichern
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function ReminderDetailModal({
+  reminder,
+  doc,
+  onEdit,
+  onDelete,
+  onToggleDone,
+  onOpenDoc,
+  onClose,
+}) {
+  const days = daysUntil(reminder.date);
+  const level = reminder.done ? "gray" : deadlineLevel(days);
+  const daysBefore = reminder.daysBefore ?? 0;
+
+  return (
+    <Modal onClose={onClose}>
+      <div className="detail">
+        <div className="detail-head">
+          <div className="detail-title">{reminder.title}</div>
+          <div className="detail-badges">
+            <span className={`badge badge-${reminder.done ? "green" : "gray"}`}>
+              {reminder.done ? "Erledigt" : "Offen"}
+            </span>
+          </div>
+        </div>
+
+        <div className={`detail-deadline detail-deadline-${level}`}>
+          <div className="detail-deadline-label">Termin</div>
+          <div className="detail-deadline-date">{formatDate(reminder.date)}</div>
+          <div className={`detail-deadline-days days-${level}`}>
+            {reminder.done
+              ? "erledigt"
+              : days > 0
+              ? `in ${days} Tag${days === 1 ? "" : "en"}`
+              : days === 0
+              ? "heute"
+              : `${Math.abs(days)} Tag${Math.abs(days) === 1 ? "" : "e"} überfällig`}
+          </div>
+        </div>
+
+        <section className="detail-section">
+          <h3 className="detail-heading">Erinnerung</h3>
+          <p className="detail-text">
+            {daysBefore === 0
+              ? "Benachrichtigung am Terminstag."
+              : `Benachrichtigung ${daysBefore} Tag${daysBefore === 1 ? "" : "e"} vorher.`}
+          </p>
+        </section>
+
+        {reminder.notes && (
+          <section className="detail-section">
+            <h3 className="detail-heading">Notiz</h3>
+            <p className="detail-text">{reminder.notes}</p>
+          </section>
+        )}
+
+        <section className="detail-section">
+          <h3 className="detail-heading">Verknüpftes Dokument</h3>
+          {doc ? (
+            <button
+              type="button"
+              className="linked-item linked-clickable"
+              onClick={() => onOpenDoc(doc.id)}
+            >
+              <div className="linked-title">{doc.title}</div>
+              <div className="linked-meta">
+                {doc.sender} · {formatDate(doc.date)}
+              </div>
+            </button>
+          ) : reminder.orphaned ? (
+            <p className="detail-text detail-muted">
+              Dokument wurde gelöscht.
+            </p>
+          ) : (
+            <p className="detail-text detail-muted">
+              Nicht verknüpft.
+            </p>
+          )}
+        </section>
+
+        <div className="detail-actions detail-actions-row">
+          <button type="button" className="btn-secondary" onClick={onDelete}>
+            Löschen
+          </button>
+          <button type="button" className="btn-secondary" onClick={onToggleDone}>
+            {reminder.done ? "Als offen markieren" : "Erledigt markieren"}
+          </button>
+          <button type="button" className="btn-primary" onClick={onEdit}>
+            Bearbeiten
           </button>
         </div>
       </div>
@@ -671,15 +1069,40 @@ function BottomNav({ active, onChange }) {
   );
 }
 
-function HomeView({ docs, reminders, onNav, onOpenDoc, onToggleReminder }) {
-  const openDeadlines = docs
+function HomeView({
+  docs,
+  reminders,
+  onNav,
+  onOpenDoc,
+  onOpenReminder,
+  onAddReminder,
+  onToggleReminder,
+  onToggleDocStatus,
+  onEditDeadline,
+}) {
+  const [deadlineFilter, setDeadlineFilter] = useState("all");
+
+  const allOpenDeadlines = docs
     .filter((d) => d.deadline && d.status !== "Erledigt")
     .sort((a, b) => a.deadline.localeCompare(b.deadline));
+
+  const openDeadlines = allOpenDeadlines.filter(
+    (d) => deadlineFilter === "all" || (d.deadlineType || "sonstiges") === deadlineFilter
+  );
+
   const openCount = docs.filter((d) => d.status === "Offen").length;
   const sortedReminders = [...(reminders || [])].sort((a, b) => {
     if (a.done !== b.done) return a.done ? 1 : -1;
     return (a.date || "").localeCompare(b.date || "");
   });
+
+  const deadlineFilters = [
+    { id: "all", label: "Alle" },
+    ...DEADLINE_TYPES.filter((t) => t !== "sonstiges").map((t) => ({
+      id: t,
+      label: DEADLINE_TYPE_LABEL[t],
+    })),
+  ];
 
   return (
     <div className="view">
@@ -693,7 +1116,7 @@ function HomeView({ docs, reminders, onNav, onOpenDoc, onToggleReminder }) {
 
       <section className="stats">
         <div className="stat">
-          <div className="stat-value">{openDeadlines.length}</div>
+          <div className="stat-value">{allOpenDeadlines.length}</div>
           <div className="stat-label">Offene Fristen</div>
         </div>
         <div className="stat">
@@ -703,6 +1126,18 @@ function HomeView({ docs, reminders, onNav, onOpenDoc, onToggleReminder }) {
       </section>
 
       <h2 className="section-title">Anstehende Fristen</h2>
+      <div className="filter-pills">
+        {deadlineFilters.map((f) => (
+          <button
+            key={f.id}
+            type="button"
+            className={`pill ${deadlineFilter === f.id ? "active" : ""}`}
+            onClick={() => setDeadlineFilter(f.id)}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
       <div className="deadline-list">
         {openDeadlines.length === 0 && (
           <div className="empty">Keine offenen Fristen.</div>
@@ -711,41 +1146,66 @@ function HomeView({ docs, reminders, onNav, onOpenDoc, onToggleReminder }) {
           const days = daysUntil(d.deadline);
           const level = deadlineLevel(days);
           return (
-            <button
-              key={d.id}
-              type="button"
-              className="card deadline-card"
-              onClick={() => onOpenDoc(d.id)}
-            >
-              <div className="deadline-head">
-                <div className="deadline-info">
-                  <div className="deadline-title">{d.title}</div>
-                  <div className="deadline-sender">{d.sender}</div>
+            <div key={d.id} className="card deadline-card">
+              <button
+                type="button"
+                className="deadline-body"
+                onClick={() => onOpenDoc(d.id)}
+              >
+                <div className="deadline-head">
+                  <div className="deadline-info">
+                    <div className="deadline-title-row">
+                      <span className="deadline-title">{d.title}</span>
+                      <DeadlineTypeBadge type={d.deadlineType} />
+                    </div>
+                    <div className="deadline-sender">{d.sender}</div>
+                  </div>
+                  <div className={`deadline-days days-${level}`}>
+                    {days > 0
+                      ? `noch ${days} Tag${days === 1 ? "" : "e"}`
+                      : days === 0
+                      ? "heute fällig"
+                      : "überfällig"}
+                  </div>
                 </div>
-                <div className={`deadline-days days-${level}`}>
-                  {days > 0
-                    ? `noch ${days} Tag${days === 1 ? "" : "e"}`
-                    : days === 0
-                    ? "heute fällig"
-                    : "überfällig"}
+                <div className="progress">
+                  <div
+                    className={`progress-bar bar-${level}`}
+                    style={{ width: `${progressPct(days)}%` }}
+                  />
                 </div>
-              </div>
-              <div className="progress">
-                <div
-                  className={`progress-bar bar-${level}`}
-                  style={{ width: `${progressPct(days)}%` }}
-                />
-              </div>
-              <div className="deadline-foot">
-                Fällig am {formatDate(d.deadline)}
-                {d.amount != null && ` · ${formatAmount(d.amount)}`}
-              </div>
-            </button>
+                <div className="deadline-foot">
+                  Fällig am {formatDate(d.deadline)}
+                  {d.amount != null && ` · ${formatAmount(d.amount)}`}
+                </div>
+              </button>
+              <CardMenu
+                items={[
+                  {
+                    label: "Als erledigt markieren",
+                    onClick: () => onToggleDocStatus(d.id),
+                  },
+                  {
+                    label: "Frist verschieben",
+                    onClick: () => onEditDeadline(d.id),
+                  },
+                ]}
+              />
+            </div>
           );
         })}
       </div>
 
-      <h2 className="section-title">Erinnerungen</h2>
+      <div className="section-title-row">
+        <h2 className="section-title section-title-inline">Erinnerungen</h2>
+        <button
+          type="button"
+          className="btn-primary btn-primary-sm"
+          onClick={onAddReminder}
+        >
+          + Erinnerung
+        </button>
+      </div>
       <div className="reminder-list">
         {sortedReminders.length === 0 && (
           <div className="empty">Keine Erinnerungen.</div>
@@ -769,7 +1229,7 @@ function HomeView({ docs, reminders, onNav, onOpenDoc, onToggleReminder }) {
               <button
                 type="button"
                 className="reminder-body"
-                onClick={() => r.docId && onOpenDoc(r.docId)}
+                onClick={() => onOpenReminder(r.id)}
               >
                 <div className="reminder-title">{r.title}</div>
                 <div className={`reminder-meta days-${level}`}>
@@ -783,6 +1243,9 @@ function HomeView({ docs, reminders, onNav, onOpenDoc, onToggleReminder }) {
                     ? "heute"
                     : `${Math.abs(days)} Tag${Math.abs(days) === 1 ? "" : "e"} überfällig`}
                 </div>
+                {r.orphaned && (
+                  <div className="reminder-orphan">Dokument wurde gelöscht</div>
+                )}
               </button>
             </div>
           );
@@ -997,8 +1460,26 @@ function CategoriesView({ docs, onOpenCategory, onNav }) {
   );
 }
 
+const ARCHIVE_SORTS = {
+  date_desc: (a, b) => (b.date || "").localeCompare(a.date || ""),
+  date_asc: (a, b) => (a.date || "").localeCompare(b.date || ""),
+  deadline_asc: (a, b) => {
+    if (!a.deadline && !b.deadline) return 0;
+    if (!a.deadline) return 1;
+    if (!b.deadline) return -1;
+    return a.deadline.localeCompare(b.deadline);
+  },
+  deadline_desc: (a, b) => {
+    if (!a.deadline && !b.deadline) return 0;
+    if (!a.deadline) return 1;
+    if (!b.deadline) return -1;
+    return b.deadline.localeCompare(a.deadline);
+  },
+};
+
 function ArchiveView({ docs, categoryFilter, onClearCategoryFilter, onOpenDoc }) {
   const [filter, setFilter] = useState("all");
+  const [sort, setSort] = useState("date_desc");
   const [search, setSearch] = useState("");
 
   const years = useMemo(
@@ -1006,22 +1487,24 @@ function ArchiveView({ docs, categoryFilter, onClearCategoryFilter, onOpenDoc })
     [docs]
   );
 
-  const filtered = docs.filter((d) => {
-    if (categoryFilter && d.category !== categoryFilter) return false;
-    if (filter === "open" && d.status === "Erledigt") return false;
-    if (filter === "done" && d.status !== "Erledigt") return false;
-    if (filter.startsWith("y-") && !d.date.startsWith(filter.slice(2)))
-      return false;
-    if (search) {
-      const q = search.toLowerCase();
-      const haystack = [d.title, d.sender, d.category, d.summary]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-      if (!haystack.includes(q)) return false;
-    }
-    return true;
-  });
+  const filtered = docs
+    .filter((d) => {
+      if (categoryFilter && d.category !== categoryFilter) return false;
+      if (filter === "open" && d.status === "Erledigt") return false;
+      if (filter === "done" && d.status !== "Erledigt") return false;
+      if (filter.startsWith("y-") && !d.date.startsWith(filter.slice(2)))
+        return false;
+      if (search) {
+        const q = search.toLowerCase();
+        const haystack = [d.title, d.sender, d.category, d.summary]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        if (!haystack.includes(q)) return false;
+      }
+      return true;
+    })
+    .sort(ARCHIVE_SORTS[sort] || ARCHIVE_SORTS.date_desc);
 
   const filters = [
     { id: "all", label: "Alle" },
@@ -1071,6 +1554,23 @@ function ArchiveView({ docs, categoryFilter, onClearCategoryFilter, onOpenDoc })
         ))}
       </div>
 
+      <div className="sort-row">
+        <label htmlFor="archive-sort" className="sort-label">
+          Sortierung
+        </label>
+        <select
+          id="archive-sort"
+          className="form-input sort-select"
+          value={sort}
+          onChange={(e) => setSort(e.target.value)}
+        >
+          <option value="date_desc">Datum (neueste zuerst)</option>
+          <option value="date_asc">Datum (älteste zuerst)</option>
+          <option value="deadline_asc">Frist (nächste zuerst)</option>
+          <option value="deadline_desc">Frist (späteste zuerst)</option>
+        </select>
+      </div>
+
       <div className="doc-list">
         {filtered.length === 0 && (
           <div className="empty">Keine Dokumente gefunden.</div>
@@ -1083,9 +1583,13 @@ function ArchiveView({ docs, categoryFilter, onClearCategoryFilter, onOpenDoc })
             onClick={() => onOpenDoc(d.id)}
           >
             <div className="doc-body">
-              <div className="doc-title">{d.title}</div>
+              <div className="doc-title-row">
+                <span className="doc-title">{d.title}</span>
+                <DeadlineTypeBadge type={d.deadlineType} />
+              </div>
               <div className="doc-meta">
                 {d.sender} · {formatDate(d.date)} · {d.category}
+                {d.deadline && ` · Frist ${formatDate(d.deadline)}`}
               </div>
               {d.summary && <div className="doc-summary">{d.summary}</div>}
             </div>
@@ -1544,6 +2048,10 @@ export default function App() {
   const [contactFormOpen, setContactFormOpen] = useState(false);
   const [contactFormMode, setContactFormMode] = useState("add");
   const [contactFormPrefill, setContactFormPrefill] = useState(null);
+  const [selectedReminderId, setSelectedReminderId] = useState(null);
+  const [reminderFormOpen, setReminderFormOpen] = useState(false);
+  const [reminderFormMode, setReminderFormMode] = useState("add");
+  const [deadlineEditDocId, setDeadlineEditDocId] = useState(null);
   const [disclaimerOpen, setDisclaimerOpen] = useState(loadDisclaimerOpen);
   const [onboardingDone, setOnboardingDone] = useState(loadOnboardingDone);
   const [userEmail, setUserEmail] = useState(loadUserEmail);
@@ -1574,7 +2082,7 @@ export default function App() {
 
   useEffect(() => {
     if (!onboardingDone) return;
-    sendDeadlineReminders(docs);
+    sendDeadlineReminders(docs, reminders);
     // Only run when onboarding transitions to done (returning users on mount,
     // new users after they finish step 3). Docs snapshot at that moment is fine.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1584,13 +2092,19 @@ export default function App() {
 
   function buildDocFromResult(result) {
     const today = TODAY.toISOString().slice(0, 10);
+    const deadline = result.deadline || null;
     return {
       id: "d" + Date.now(),
       title: result.documentType || result.filename || "Dokument",
       sender: result.sender || "",
       category: result.category || "Sonstiges",
       date: today,
-      deadline: result.deadline || null,
+      deadline,
+      deadlineType: deadline
+        ? (DEADLINE_TYPES.includes(result.deadlineType)
+            ? result.deadlineType
+            : "sonstiges")
+        : null,
       amount: result.amount ?? null,
       summary: result.summary || null,
       replyDraft: result.replyDraft || null,
@@ -1675,6 +2189,76 @@ export default function App() {
     );
   }
 
+  function deleteDoc(id) {
+    const d = docs.find((x) => x.id === id);
+    if (!d) return;
+    if (!confirm(`Dokument "${d.title}" wirklich löschen?`)) return;
+    setDocs((prev) => prev.filter((x) => x.id !== id));
+    setReminders((prev) =>
+      prev.map((r) =>
+        r.docId === id ? { ...r, docId: null, orphaned: true } : r
+      )
+    );
+    setSelectedId(null);
+  }
+
+  function openDeadlineEdit(id) {
+    setDeadlineEditDocId(id);
+  }
+
+  function saveDeadlineEdit({ deadline, deadlineType }) {
+    if (!deadlineEditDocId) return;
+    setDocs((prev) =>
+      prev.map((d) =>
+        d.id === deadlineEditDocId ? { ...d, deadline, deadlineType } : d
+      )
+    );
+    setDeadlineEditDocId(null);
+  }
+
+  function openAddReminder() {
+    setReminderFormMode("add");
+    setSelectedReminderId(null);
+    setReminderFormOpen(true);
+  }
+
+  function openEditReminder() {
+    setReminderFormMode("edit");
+    setReminderFormOpen(true);
+  }
+
+  function saveReminder(data) {
+    if (reminderFormMode === "edit" && selectedReminderId) {
+      setReminders((prev) =>
+        prev.map((r) =>
+          r.id === selectedReminderId ? { ...r, ...data } : r
+        )
+      );
+    } else {
+      setReminders((prev) => [
+        {
+          id: "r" + Date.now(),
+          done: false,
+          ...data,
+        },
+        ...prev,
+      ]);
+    }
+    setReminderFormOpen(false);
+  }
+
+  function deleteReminder() {
+    if (!selectedReminderId) return;
+    if (!confirm("Erinnerung wirklich löschen?")) return;
+    setReminders((prev) => prev.filter((r) => r.id !== selectedReminderId));
+    setSelectedReminderId(null);
+  }
+
+  function toggleSelectedReminderDone() {
+    if (!selectedReminderId) return;
+    toggleReminder(selectedReminderId);
+  }
+
   function navigate(nextTab) {
     if (nextTab !== "archive") setCategoryFilter(null);
     setTab(nextTab);
@@ -1757,7 +2341,11 @@ export default function App() {
             reminders={reminders}
             onNav={navigate}
             onOpenDoc={setSelectedId}
+            onOpenReminder={setSelectedReminderId}
+            onAddReminder={openAddReminder}
             onToggleReminder={toggleReminder}
+            onToggleDocStatus={toggleStatus}
+            onEditDeadline={openDeadlineEdit}
           />
         )}
         {tab === "scan" && (
@@ -1792,11 +2380,58 @@ export default function App() {
       </main>
       <BottomNav active={tab} onChange={navigate} />
 
-      {selectedDoc && (
+      {selectedDoc && !deadlineEditDocId && (
         <DocumentModal
           doc={selectedDoc}
           onClose={() => setSelectedId(null)}
           onToggleStatus={() => toggleStatus(selectedDoc.id)}
+          onEditDeadline={() => openDeadlineEdit(selectedDoc.id)}
+          onDelete={() => deleteDoc(selectedDoc.id)}
+        />
+      )}
+
+      {deadlineEditDocId && (() => {
+        const d = docs.find((x) => x.id === deadlineEditDocId);
+        if (!d) return null;
+        return (
+          <DeadlineEditModal
+            doc={d}
+            onCancel={() => setDeadlineEditDocId(null)}
+            onSave={saveDeadlineEdit}
+          />
+        );
+      })()}
+
+      {selectedReminderId && !reminderFormOpen && (() => {
+        const r = reminders.find((x) => x.id === selectedReminderId);
+        if (!r) return null;
+        const linkedDoc = r.docId ? docs.find((x) => x.id === r.docId) : null;
+        return (
+          <ReminderDetailModal
+            reminder={r}
+            doc={linkedDoc}
+            onClose={() => setSelectedReminderId(null)}
+            onEdit={openEditReminder}
+            onDelete={deleteReminder}
+            onToggleDone={toggleSelectedReminderDone}
+            onOpenDoc={(id) => {
+              setSelectedReminderId(null);
+              setSelectedId(id);
+            }}
+          />
+        );
+      })()}
+
+      {reminderFormOpen && (
+        <ReminderFormModal
+          initial={
+            reminderFormMode === "edit"
+              ? reminders.find((r) => r.id === selectedReminderId)
+              : null
+          }
+          docs={docs}
+          onCancel={() => setReminderFormOpen(false)}
+          onSave={saveReminder}
         />
       )}
 

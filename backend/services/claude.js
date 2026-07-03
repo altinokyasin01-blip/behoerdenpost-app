@@ -11,6 +11,14 @@ const ALLOWED_CATEGORIES = [
   "Sonstiges",
 ];
 
+const ALLOWED_DEADLINE_TYPES = [
+  "zahlung",
+  "antwort",
+  "widerspruch",
+  "abgabe",
+  "sonstiges",
+];
+
 const SYSTEM_PROMPT = `Du bist ein Assistent zur Analyse deutscher Behördenpost.
 Analysiere das übermittelte Dokument und antworte AUSSCHLIESSLICH mit einem
 JSON-Objekt in exakt diesem Schema (keine Markdown-Codeblöcke, kein Fließtext):
@@ -22,6 +30,7 @@ JSON-Objekt in exakt diesem Schema (keine Markdown-Codeblöcke, kein Fließtext)
   "amount": "Wichtigster Geldbetrag als Zahl in Euro (z.B. 230.00) oder null wenn keiner erkennbar. Nur Zahl, kein Währungssymbol, Punkt als Dezimaltrennzeichen.",
   "summary": "2-4 Sätze verständliche Zusammenfassung in einfacher Sprache",
   "deadline": "Wichtigste Frist im Format YYYY-MM-DD oder null wenn keine erkennbar",
+  "deadlineType": "Genau EINER dieser Werte oder null wenn keine Frist: ${ALLOWED_DEADLINE_TYPES.join(", ")}",
   "replyDraft": "Vorschlag für ein Antwortschreiben (Deutsch, förmlicher Ton) oder null",
   "actions": [
     {
@@ -40,6 +49,13 @@ Ordne die Kategorie nach Absender/Inhalt zu:
 - Inkasso: Inkassobüros, Mahnbescheide von Gläubigern (nicht Finanzamt)
 - Versicherung: KFZ-, Haftpflicht-, Rechtsschutz- etc. (nicht Krankenversicherung)
 - Sonstiges: alles andere (Rente, BAföG, Behörden, GEZ, ...)
+
+Ordne den deadlineType nach Art der Frist zu:
+- zahlung: Zahlungsfrist (Rechnung, Bußgeld, Mahnung, Steuernachzahlung)
+- antwort: Frist für Rückmeldung/Stellungnahme/Nachweisvorlage
+- widerspruch: Widerspruchs-/Einspruchsfrist gegen Bescheid
+- abgabe: Abgabefrist (Steuererklärung, Antragsformular, Nachweis)
+- sonstiges: alle anderen Fristen, wenn Kategorie unklar
 
 Regeln für "actions":
 - Mindestens 1, maximal 6 Einträge — sortiert nach priority (high zuerst).
@@ -124,13 +140,20 @@ async function analyzeDocument(base64, mimeType) {
     typeof parsed.amount === "number" && !Number.isNaN(parsed.amount)
       ? parsed.amount
       : null;
+  const deadline = parsed.deadline ?? null;
+  const deadlineType = deadline
+    ? (ALLOWED_DEADLINE_TYPES.includes(parsed.deadlineType)
+        ? parsed.deadlineType
+        : "sonstiges")
+    : null;
   return {
     documentType: parsed.documentType ?? null,
     category,
     sender: parsed.sender ?? null,
     amount,
     summary: parsed.summary ?? null,
-    deadline: parsed.deadline ?? null,
+    deadline,
+    deadlineType,
     replyDraft: parsed.replyDraft ?? null,
     actions: normalizeActions(parsed.actions),
   };
