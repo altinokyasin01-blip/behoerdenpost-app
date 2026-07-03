@@ -692,6 +692,137 @@ const TEMPLATE_TYPES = [
 const USER_NAME_KEY = "buero_user_name";
 const TOOLTIPS_SEEN_KEY = "buero_tooltips_seen";
 
+const APP_VERSION = "0.1.0";
+const SUPPORT_EMAIL = "support@buero.app";
+
+const LEGAL_TEXTS = {
+  impressum: {
+    title: "Impressum",
+    body: (
+      <>
+        <p>
+          <strong>Angaben gemäß § 5 TMG</strong>
+        </p>
+        <p>
+          [Name des Betreibers]
+          <br />
+          [Straße Hausnr.]
+          <br />
+          [PLZ Ort]
+          <br />
+          Deutschland
+        </p>
+        <p>
+          <strong>Kontakt</strong>
+          <br />
+          E-Mail: [kontakt@…]
+        </p>
+        <p>
+          <strong>Verantwortlich für den Inhalt nach § 55 Abs. 2 RStV</strong>
+          <br />
+          [Name]
+        </p>
+        <p className="detail-muted">
+          Diese Angaben sind Platzhalter — sie werden vor dem öffentlichen
+          Betrieb der App vollständig ausgefüllt.
+        </p>
+      </>
+    ),
+  },
+  datenschutz: {
+    title: "Datenschutzerklärung",
+    body: (
+      <>
+        <p>
+          Deine Privatsphäre ist der Kern der App. Büro ist bewusst als lokale
+          Web-App gebaut — deine Daten liegen bei dir, nicht bei uns.
+        </p>
+        <p>
+          <strong>Was auf deinem Gerät gespeichert wird</strong>
+          <br />
+          Dokumente, Kontakte, Erinnerungen, Termine, App-Einstellungen und
+          (wenn du Ordner freigibst) der extrahierte Text lokaler Dateien.
+          Alles landet ausschließlich in localStorage und IndexedDB deines
+          Browsers.
+        </p>
+        <p>
+          <strong>Was an externe Dienste übermittelt wird</strong>
+          <br />
+          Beim Scannen wird das Dokument-Bild oder PDF an die Anthropic Claude
+          API zur Analyse geschickt. Bei Vorlagen, Widerspruch-Check und
+          QR-Analyse wird der jeweilige Textinhalt gesendet. Anthropic
+          behandelt diese Daten nach der eigenen Datenschutzerklärung
+          (anthropic.com/privacy).
+        </p>
+        <p>
+          <strong>Was NICHT passiert</strong>
+          <br />
+          Kein Tracking, keine Analytics, keine Cookies. Keine Weitergabe an
+          Dritte. Kein Backend-Server, der deine Daten dauerhaft speichert.
+        </p>
+        <p>
+          <strong>Deine Rechte nach DSGVO</strong>
+          <br />
+          Auskunft: „Daten exportieren" gibt dir eine vollständige JSON-Kopie.
+          Löschung: „Alle Daten löschen" wischt alles vom Gerät. Widerruf:
+          einfach nicht mehr benutzen.
+        </p>
+        <p>
+          <strong>Verantwortlich</strong>
+          <br />
+          Siehe Impressum.
+        </p>
+      </>
+    ),
+  },
+  agb: {
+    title: "Nutzungsbedingungen",
+    body: (
+      <>
+        <p>
+          <strong>1. Was Büro ist</strong>
+          <br />
+          Büro ist ein persönlicher Assistent für die Verwaltung von Post,
+          Fristen, Kontakten und Terminen. Die App analysiert deine Dokumente
+          mit KI (Anthropic Claude) und schlägt Aktionen vor.
+        </p>
+        <p>
+          <strong>2. Was Büro NICHT ist</strong>
+          <br />
+          Büro ersetzt keine juristische, steuerliche oder finanzielle
+          Beratung. Alle Analysen und Vorschläge sind unverbindliche Hinweise
+          — keine Rechts- oder Steuerauskunft.
+        </p>
+        <p>
+          <strong>3. Haftung</strong>
+          <br />
+          Die Nutzung ist kostenlos. Wir übernehmen keine Gewähr für die
+          Richtigkeit oder Vollständigkeit der KI-Analysen. Für Entscheidungen
+          auf Basis der App-Ausgaben bist du selbst verantwortlich.
+        </p>
+        <p>
+          <strong>4. Bei wichtigen Vorgängen</strong>
+          <br />
+          Bei rechtlich oder finanziell bedeutenden Angelegenheiten konsultiere
+          einen Anwalt, Steuerberater oder anderen Fachmann.
+        </p>
+        <p>
+          <strong>5. Datenschutz</strong>
+          <br />
+          Siehe Datenschutzerklärung.
+        </p>
+        <p>
+          <strong>6. Änderungen</strong>
+          <br />
+          Diese Bedingungen können sich ändern. Aktuelle Fassung immer in der
+          App einsehbar.
+        </p>
+        <p className="detail-muted">Stand: {APP_VERSION}</p>
+      </>
+    ),
+  },
+};
+
 const TAB_TIPS = {
   home: "Deine Kommandozentrale — Fristen, Ausgaben und Erinnerungen auf einen Blick. Klick auf eine Karte für Details.",
   calendar: "Alle Termine, Fristen und Erinnerungen in einer Ansicht. Klick auf einen Tag zeigt die Einträge unten.",
@@ -3388,6 +3519,21 @@ function formatBytes(n) {
   return `${(n / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function LegalModal({ type, onClose }) {
+  const info = LEGAL_TEXTS[type];
+  if (!info) return null;
+  return (
+    <Modal onClose={onClose}>
+      <div className="detail">
+        <div className="detail-head">
+          <div className="detail-title">{info.title}</div>
+        </div>
+        <div className="legal-text">{info.body}</div>
+      </div>
+    </Modal>
+  );
+}
+
 function SettingsView({
   folders,
   folderStatus,
@@ -3397,140 +3543,423 @@ function SettingsView({
   onAddFolder,
   onRemoveFolder,
   onRefreshFolder,
+  userEmail,
+  onUpdateEmail,
+  notifPerm,
+  onRequestNotif,
+  onExportData,
+  onDeleteAll,
 }) {
+  const [emailEditing, setEmailEditing] = useState(false);
+  const [emailDraft, setEmailDraft] = useState(userEmail || "");
+  const [emailError, setEmailError] = useState(null);
+  const [legalOpen, setLegalOpen] = useState(null);
+
+  function saveEmail() {
+    const v = emailDraft.trim();
+    if (v && !isValidEmail(v)) {
+      setEmailError("Ungültige E-Mail-Adresse.");
+      return;
+    }
+    onUpdateEmail(v);
+    setEmailEditing(false);
+    setEmailError(null);
+  }
+
+  function cancelEmailEdit() {
+    setEmailDraft(userEmail || "");
+    setEmailEditing(false);
+    setEmailError(null);
+  }
+
+  const notifStatus =
+    notifPerm === "granted"
+      ? "Aktiv — Browser darf Erinnerungen zeigen"
+      : notifPerm === "denied"
+      ? "Blockiert — im Browser-Menü ändern"
+      : notifPerm === "unsupported"
+      ? "In diesem Browser nicht verfügbar"
+      : "Noch nicht aktiviert";
+
   return (
     <div className="view">
       <header className="view-header">
         <h1>Einstellungen</h1>
-        <p className="lead">Design und lokale Dateien verwalten.</p>
+        <p className="lead">
+          Konto, App-Einstellungen, Datei-Freigabe und Rechtliches.
+        </p>
       </header>
 
-      <h2 className="section-title">Darstellung</h2>
-      <div className="filter-pills">
-        {THEME_CHOICES.map((choice) => {
-          const Icon = THEME_ICON[choice];
-          return (
-            <button
-              key={choice}
-              type="button"
-              className={`pill ${themeChoice === choice ? "active" : ""}`}
-              onClick={() => onSetTheme(choice)}
-            >
-              <Icon size={14} />
-              <span>{THEME_LABEL[choice]}</span>
-            </button>
-          );
-        })}
-      </div>
-      <p className="settings-hint">
-        „System" folgt der Einstellung deines Betriebssystems.
-      </p>
-
-      {FS_SUPPORTED ? (
-        <>
-          <h2 className="section-title">Lokale Dateien</h2>
-          <p className="settings-text">
-            Gib einen Ordner frei — Büro liest die Dateien darin lokal im
-            Browser aus und macht alles über die Schnellsuche auffindbar.
-            PDFs werden per PDF.js, Bilder per Tesseract-OCR (Deutsch + Englisch)
-            verarbeitet. Nichts verlässt dein Gerät.
-          </p>
-          <p className="settings-text">
-            Max. {FILE_INDEX_MAX_FILES} Dateien pro Ordner. Bilder über 2 MB
-            werden übersprungen (OCR wäre zu langsam). Erst OCR ist zäh —
-            Tesseract lädt beim ersten Bild ~15 MB Sprachdaten aus dem Cache.
-          </p>
-
-          <div className="settings-actions">
-            <button
-              type="button"
-              className="btn-primary"
-              onClick={onAddFolder}
-              disabled={indexing.active}
-            >
-              {indexing.active ? "Indiziere…" : "Ordner freigeben"}
-            </button>
-          </div>
-
-          {indexing.active && (
-            <div className="index-progress">
-              <div className="index-progress-label">
-                {indexing.current}/{indexing.total} · {indexing.name || "…"}
+      {/* KONTO */}
+      <section className="settings-section">
+        <h2 className="settings-section-title">Konto</h2>
+        <div className="settings-group">
+          <div className="settings-row">
+            <div className="settings-row-body">
+              <div className="settings-row-label">E-Mail</div>
+              {emailEditing ? (
+                <>
+                  <input
+                    type="email"
+                    className="form-input settings-inline-input"
+                    value={emailDraft}
+                    onChange={(e) => {
+                      setEmailDraft(e.target.value);
+                      setEmailError(null);
+                    }}
+                    onKeyDown={(e) => e.key === "Enter" && saveEmail()}
+                    autoFocus
+                  />
+                  {emailError && (
+                    <div className="settings-row-error">{emailError}</div>
+                  )}
+                </>
+              ) : (
+                <div className="settings-row-value">{userEmail || "—"}</div>
+              )}
+            </div>
+            {emailEditing ? (
+              <div className="settings-row-actions">
+                <button
+                  type="button"
+                  className="btn-secondary btn-primary-sm"
+                  onClick={cancelEmailEdit}
+                >
+                  Abbrechen
+                </button>
+                <button
+                  type="button"
+                  className="btn-primary btn-primary-sm"
+                  onClick={saveEmail}
+                >
+                  Speichern
+                </button>
               </div>
-              <div className="progress">
-                <div
-                  className="progress-bar bar-amber"
-                  style={{
-                    width: `${Math.max(4, Math.min(100, (indexing.current / Math.max(1, indexing.total)) * 100))}%`,
-                  }}
-                />
+            ) : (
+              <button
+                type="button"
+                className="btn-secondary btn-primary-sm"
+                onClick={() => setEmailEditing(true)}
+              >
+                Ändern
+              </button>
+            )}
+          </div>
+          <div className="settings-row">
+            <div className="settings-row-body">
+              <div className="settings-row-label">Daten exportieren</div>
+              <div className="settings-row-sub">
+                Alle Dokumente, Kontakte, Erinnerungen und Termine als JSON.
               </div>
             </div>
-          )}
-
-          <div className="folder-list">
-            {folders.length === 0 && !indexing.active && (
-              <div className="empty">Noch keine Ordner freigegeben.</div>
-            )}
-            {folders.map((f) => {
-              const status = folderStatus[f.id] || "unknown";
-              const stale = status === "stale" || status === "missing";
-              const skippedCount = f.files.filter((x) => x.skipped).length;
-              return (
-                <div key={f.id} className="card folder-card">
-                  <div className="folder-body">
-                    <div className="folder-name-row">
-                      <IconFile size={16} />
-                      <span className="folder-name">{f.name}</span>
-                      {stale && (
-                        <span className="folder-badge">
-                          {status === "missing" ? "Handle verloren" : "Zugriff abgelaufen"}
-                        </span>
-                      )}
-                    </div>
-                    <div className="folder-meta">
-                      {f.files.length} Datei{f.files.length === 1 ? "" : "en"}
-                      {skippedCount > 0 &&
-                        ` · ${skippedCount} übersprungen (Bild > 2 MB)`}
-                      {f.indexedAt && ` · zuletzt indiziert ${formatDate(f.indexedAt)}`}
-                    </div>
-                  </div>
-                  <div className="folder-actions">
-                    {stale && status !== "missing" && (
-                      <button
-                        type="button"
-                        className="btn-secondary"
-                        onClick={() => onRefreshFolder(f.id)}
-                      >
-                        Zugriff erneuern
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      className="btn-secondary btn-danger"
-                      onClick={() => onRemoveFolder(f.id)}
-                    >
-                      Entfernen
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
+            <button
+              type="button"
+              className="btn-secondary btn-primary-sm"
+              onClick={onExportData}
+            >
+              Herunterladen
+            </button>
           </div>
-
-          <p className="settings-hint">
-            Funktioniert nur in Chrome und Edge. In Safari ist die File System
-            Access API nicht verfügbar.
-          </p>
-        </>
-      ) : (
-        <div className="card empty-card">
-          <div className="empty-title">Nicht unterstützt</div>
-          <div className="empty-sub">
-            Lokale Ordner können nur in Chrome oder Edge freigegeben werden.
-            Safari unterstützt die File System Access API nicht.
+          <div className="settings-row">
+            <div className="settings-row-body">
+              <div className="settings-row-label">Alle Daten löschen</div>
+              <div className="settings-row-sub">
+                Setzt die App komplett zurück. Kann nicht rückgängig gemacht
+                werden.
+              </div>
+            </div>
+            <button
+              type="button"
+              className="btn-secondary btn-danger btn-primary-sm"
+              onClick={onDeleteAll}
+            >
+              Löschen
+            </button>
           </div>
         </div>
+      </section>
+
+      {/* APP */}
+      <section className="settings-section">
+        <h2 className="settings-section-title">App</h2>
+        <div className="settings-group">
+          <div className="settings-row">
+            <div className="settings-row-body">
+              <div className="settings-row-label">Design</div>
+              <div className="settings-row-sub">
+                „System" folgt der Einstellung deines Betriebssystems.
+              </div>
+            </div>
+            <div className="filter-pills settings-inline-pills">
+              {THEME_CHOICES.map((choice) => {
+                const Icon = THEME_ICON[choice];
+                return (
+                  <button
+                    key={choice}
+                    type="button"
+                    className={`pill ${themeChoice === choice ? "active" : ""}`}
+                    onClick={() => onSetTheme(choice)}
+                  >
+                    <Icon size={13} />
+                    <span>{THEME_LABEL[choice]}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div className="settings-row">
+            <div className="settings-row-body">
+              <div className="settings-row-label">Sprache</div>
+            </div>
+            <div className="filter-pills settings-inline-pills">
+              <button type="button" className="pill active" disabled>
+                Deutsch
+              </button>
+              <button
+                type="button"
+                className="pill"
+                disabled
+                title="Kommt bald"
+              >
+                English (bald)
+              </button>
+            </div>
+          </div>
+          <div className="settings-row">
+            <div className="settings-row-body">
+              <div className="settings-row-label">Benachrichtigungen</div>
+              <div className="settings-row-sub">{notifStatus}</div>
+            </div>
+            {notifPerm === "default" && (
+              <button
+                type="button"
+                className="btn-secondary btn-primary-sm"
+                onClick={onRequestNotif}
+              >
+                Aktivieren
+              </button>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* LOKALE DATEIEN */}
+      <section className="settings-section">
+        <h2 className="settings-section-title">Lokale Dateien</h2>
+        {FS_SUPPORTED ? (
+          <>
+            <p className="settings-text">
+              Gib einen Ordner frei — Büro liest die Dateien darin lokal im
+              Browser aus und macht alles über die Schnellsuche auffindbar.
+              PDFs per PDF.js, Bilder per Tesseract-OCR (Deutsch + Englisch).
+              Nichts verlässt dein Gerät.
+            </p>
+            <p className="settings-text">
+              Max. {FILE_INDEX_MAX_FILES} Dateien pro Ordner. Bilder über 2 MB
+              werden übersprungen. Der erste OCR-Aufruf lädt einmal ~15 MB
+              Sprachdaten (aus Browser-Cache danach schnell).
+            </p>
+
+            <div className="settings-actions">
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={onAddFolder}
+                disabled={indexing.active}
+              >
+                {indexing.active ? "Indiziere…" : "Ordner freigeben"}
+              </button>
+            </div>
+
+            {indexing.active && (
+              <div className="index-progress">
+                <div className="index-progress-label">
+                  {indexing.current}/{indexing.total} · {indexing.name || "…"}
+                </div>
+                <div className="progress">
+                  <div
+                    className="progress-bar bar-amber"
+                    style={{
+                      width: `${Math.max(4, Math.min(100, (indexing.current / Math.max(1, indexing.total)) * 100))}%`,
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+
+            <div className="folder-list">
+              {folders.length === 0 && !indexing.active && (
+                <div className="empty">Noch keine Ordner freigegeben.</div>
+              )}
+              {folders.map((f) => {
+                const status = folderStatus[f.id] || "unknown";
+                const stale = status === "stale" || status === "missing";
+                const skippedCount = f.files.filter((x) => x.skipped).length;
+                return (
+                  <div key={f.id} className="card folder-card">
+                    <div className="folder-body">
+                      <div className="folder-name-row">
+                        <IconFile size={16} />
+                        <span className="folder-name">{f.name}</span>
+                        {stale && (
+                          <span className="folder-badge">
+                            {status === "missing"
+                              ? "Handle verloren"
+                              : "Zugriff abgelaufen"}
+                          </span>
+                        )}
+                      </div>
+                      <div className="folder-meta">
+                        {f.files.length} Datei
+                        {f.files.length === 1 ? "" : "en"}
+                        {skippedCount > 0 &&
+                          ` · ${skippedCount} übersprungen (Bild > 2 MB)`}
+                        {f.indexedAt &&
+                          ` · zuletzt indiziert ${formatDate(f.indexedAt)}`}
+                      </div>
+                    </div>
+                    <div className="folder-actions">
+                      {stale && status !== "missing" && (
+                        <button
+                          type="button"
+                          className="btn-secondary"
+                          onClick={() => onRefreshFolder(f.id)}
+                        >
+                          Zugriff erneuern
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className="btn-secondary btn-danger"
+                        onClick={() => onRemoveFolder(f.id)}
+                      >
+                        Entfernen
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <p className="settings-hint">
+              Funktioniert nur in Chrome und Edge. Safari unterstützt die File
+              System Access API nicht.
+            </p>
+          </>
+        ) : (
+          <div className="card empty-card">
+            <div className="empty-title">Nicht unterstützt</div>
+            <div className="empty-sub">
+              Lokale Ordner können nur in Chrome oder Edge freigegeben werden.
+              Safari unterstützt die File System Access API nicht.
+            </div>
+          </div>
+        )}
+      </section>
+
+      {/* SUPPORT & FEEDBACK */}
+      <section className="settings-section">
+        <h2 className="settings-section-title">Support & Feedback</h2>
+        <div className="settings-group">
+          <a
+            href={`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent("Feedback zu Büro")}`}
+            className="settings-row settings-row-link"
+          >
+            <div className="settings-row-body">
+              <div className="settings-row-label">Feedback senden</div>
+              <div className="settings-row-sub">
+                Was funktioniert? Was nervt? Schreib uns.
+              </div>
+            </div>
+            <IconChevron />
+          </a>
+          <a
+            href={`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent("Feature-Idee für Büro")}`}
+            className="settings-row settings-row-link"
+          >
+            <div className="settings-row-body">
+              <div className="settings-row-label">Feature vorschlagen</div>
+              <div className="settings-row-sub">
+                Welche Funktion würde dir am meisten helfen?
+              </div>
+            </div>
+            <IconChevron />
+          </a>
+          <div className="settings-row">
+            <div className="settings-row-body">
+              <div className="settings-row-label">Version</div>
+            </div>
+            <div className="settings-row-value settings-mono">
+              v{APP_VERSION}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ABO */}
+      <section className="settings-section">
+        <h2 className="settings-section-title">Abo</h2>
+        <div className="settings-group">
+          <div className="settings-row">
+            <div className="settings-row-body">
+              <div className="settings-row-label">Aktueller Plan</div>
+              <div className="settings-row-sub">
+                Voller Funktionsumfang, kostenlos.
+              </div>
+            </div>
+            <span className="badge badge-green">Büro Free</span>
+          </div>
+          <div className="settings-row settings-row-muted">
+            <div className="settings-row-body">
+              <div className="settings-row-label">Pro Plan</div>
+              <div className="settings-row-sub">
+                Cloud-Sync, geteilte Ordner, Priority-Support — kommt bald.
+              </div>
+            </div>
+            <span className="badge badge-gray">Coming soon</span>
+          </div>
+        </div>
+      </section>
+
+      {/* RECHTLICHES */}
+      <section className="settings-section">
+        <h2 className="settings-section-title">Rechtliches</h2>
+        <div className="settings-group">
+          <button
+            type="button"
+            className="settings-row settings-row-link"
+            onClick={() => setLegalOpen("impressum")}
+          >
+            <div className="settings-row-body">
+              <div className="settings-row-label">Impressum</div>
+            </div>
+            <IconChevron />
+          </button>
+          <button
+            type="button"
+            className="settings-row settings-row-link"
+            onClick={() => setLegalOpen("datenschutz")}
+          >
+            <div className="settings-row-body">
+              <div className="settings-row-label">Datenschutzerklärung</div>
+            </div>
+            <IconChevron />
+          </button>
+          <button
+            type="button"
+            className="settings-row settings-row-link"
+            onClick={() => setLegalOpen("agb")}
+          >
+            <div className="settings-row-body">
+              <div className="settings-row-label">Nutzungsbedingungen</div>
+            </div>
+            <IconChevron />
+          </button>
+        </div>
+      </section>
+
+      {legalOpen && (
+        <LegalModal type={legalOpen} onClose={() => setLegalOpen(null)} />
       )}
     </div>
   );
@@ -4425,6 +4854,10 @@ export default function App() {
   });
   const [tooltipsSeen, setTooltipsSeen] = useState(loadTooltipsSeen);
   const [successToast, setSuccessToast] = useState(null);
+  const [notifPerm, setNotifPerm] = useState(() => {
+    if (typeof Notification === "undefined") return "unsupported";
+    return Notification.permission;
+  });
   const [eventFormOpen, setEventFormOpen] = useState(false);
   const [eventFormMode, setEventFormMode] = useState("add");
   const [eventFormPrefill, setEventFormPrefill] = useState(null);
@@ -4563,6 +4996,75 @@ export default function App() {
   function cycleTheme() {
     const i = THEME_CHOICES.indexOf(themeChoice);
     setThemeChoice(THEME_CHOICES[(i + 1) % THEME_CHOICES.length]);
+  }
+
+  async function requestNotifPermission() {
+    if (typeof Notification === "undefined") return;
+    try {
+      const p = await Notification.requestPermission();
+      setNotifPerm(p);
+    } catch {
+      // ignore
+    }
+  }
+
+  function updateUserEmail(next) {
+    setUserEmail(next);
+    try {
+      localStorage.setItem(EMAIL_KEY, next);
+    } catch {
+      // ignore
+    }
+  }
+
+  function exportAllData() {
+    const bundle = {
+      exportedAt: new Date().toISOString(),
+      version: APP_VERSION,
+      email: userEmail,
+      userName,
+      themeChoice,
+      docs,
+      contacts,
+      reminders,
+      events,
+      fileIndex,
+    };
+    const blob = new Blob([JSON.stringify(bundle, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `buero-export-${isoLocal(TODAY)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+  }
+
+  function deleteAllData() {
+    const first = confirm(
+      "Wirklich ALLE Daten löschen? Dokumente, Kontakte, Erinnerungen, Termine und alle Einstellungen gehen verloren."
+    );
+    if (!first) return;
+    const second = confirm(
+      "Ganz sicher? Das kann nicht rückgängig gemacht werden."
+    );
+    if (!second) return;
+    try {
+      localStorage.clear();
+    } catch {
+      // ignore
+    }
+    try {
+      if (typeof indexedDB !== "undefined") {
+        indexedDB.deleteDatabase(IDB_NAME);
+      }
+    } catch {
+      // ignore
+    }
+    location.reload();
   }
 
   useEffect(() => {
@@ -5264,6 +5766,12 @@ export default function App() {
             onAddFolder={addFolder}
             onRemoveFolder={removeFolder}
             onRefreshFolder={refreshFolder}
+            userEmail={userEmail}
+            onUpdateEmail={updateUserEmail}
+            notifPerm={notifPerm}
+            onRequestNotif={requestNotifPermission}
+            onExportData={exportAllData}
+            onDeleteAll={deleteAllData}
           />
         )}
       </main>
