@@ -298,4 +298,42 @@ async function analyzeAppeal({ documentType, summary, deadlineType }) {
   };
 }
 
-module.exports = { analyzeDocument, analyzeAppeal };
+const EXTRACT_SYSTEM_PROMPT = `Du erhältst ein Dokument (PDF, Bild oder Scan).
+Gib den enthaltenen Text so wortgetreu wie möglich als reinen Fließtext zurück.
+
+Regeln:
+- Nur Text — keine Markdown-Formatierung, keine Kommentare, kein JSON, keine Codeblöcke.
+- Beibehalten: Absätze durch Leerzeilen, sinnvolle Zeilenumbrüche.
+- Tabellen als Text serialisieren (z.B. mit " | " als Trenner).
+- Erkennst du keinen Text, gib einen leeren String zurück.
+- Kein Vorspann wie "Hier ist der Text:" — direkt der Inhalt.`;
+
+async function extractText(base64, mimeType) {
+  const response = await getClient().messages.create({
+    model: MODEL,
+    max_tokens: 4096,
+    system: EXTRACT_SYSTEM_PROMPT,
+    messages: [
+      {
+        role: "user",
+        content: [
+          buildContentBlock(base64, mimeType),
+          {
+            type: "text",
+            text: "Extrahiere den Text aus diesem Dokument.",
+          },
+        ],
+      },
+    ],
+  });
+
+  const text = response.content
+    .filter((block) => block.type === "text")
+    .map((block) => block.text)
+    .join("")
+    .trim();
+
+  return text;
+}
+
+module.exports = { analyzeDocument, analyzeAppeal, extractText };

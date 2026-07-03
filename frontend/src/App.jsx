@@ -10,6 +10,218 @@ const EMAIL_KEY = "user_email";
 const CONTACTS_KEY = "behoerdenpost_contacts";
 const REMINDERS_KEY = "behoerdenpost_reminders";
 const EVENTS_KEY = "behoerdenpost_events";
+const FILE_INDEX_KEY = "buero_file_index";
+const FILE_INDEX_MAX_FILES = 50;
+const FILE_INDEX_MAX_TEXT = 5000;
+
+const EXT_TEXT_PLAIN = new Set([".txt", ".md"]);
+const EXT_VISION = new Set([".pdf", ".jpg", ".jpeg", ".png"]);
+const EXT_MIME = {
+  ".pdf": "application/pdf",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".png": "image/png",
+};
+
+const FS_SUPPORTED = typeof window !== "undefined" && "showDirectoryPicker" in window;
+
+const IDB_NAME = "buero";
+const IDB_STORE = "folder_handles";
+
+function idbOpen() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(IDB_NAME, 1);
+    req.onupgradeneeded = () => {
+      req.result.createObjectStore(IDB_STORE);
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function idbGetAll() {
+  if (typeof indexedDB === "undefined") return [];
+  const db = await idbOpen();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(IDB_STORE, "readonly");
+    const store = tx.objectStore(IDB_STORE);
+    const keysReq = store.getAllKeys();
+    keysReq.onsuccess = () => {
+      const valReq = store.getAll();
+      valReq.onsuccess = () => {
+        resolve(keysReq.result.map((k, i) => ({ id: k, handle: valReq.result[i] })));
+      };
+      valReq.onerror = () => reject(valReq.error);
+    };
+    keysReq.onerror = () => reject(keysReq.error);
+  });
+}
+
+async function idbPut(id, handle) {
+  const db = await idbOpen();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(IDB_STORE, "readwrite");
+    tx.objectStore(IDB_STORE).put(handle, id);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+async function idbDelete(id) {
+  const db = await idbOpen();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(IDB_STORE, "readwrite");
+    tx.objectStore(IDB_STORE).delete(id);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+function fileExt(name) {
+  const i = name.lastIndexOf(".");
+  return i >= 0 ? name.slice(i).toLowerCase() : "";
+}
+
+async function* walkFolder(handle, prefix = "") {
+  for await (const [name, child] of handle.entries()) {
+    const path = prefix ? `${prefix}/${name}` : name;
+    if (child.kind === "file") {
+      yield { path, name, handle: child };
+    } else if (child.kind === "directory") {
+      yield* walkFolder(child, path);
+    }
+  }
+}
+
+async function extractViaBackend(apiBase, file, ext) {
+  const mime = EXT_MIME[ext] || file.type || "application/octet-stream";
+  const blob = file.type ? file : new Blob([file], { type: mime });
+  const fd = new FormData();
+  fd.append("document", blob, file.name);
+  const res = await fetch(`${apiBase}/api/extract`, {
+    method: "POST",
+    body: fd,
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || `HTTP ${res.status}`);
+  }
+  const data = await res.json();
+  return typeof data.text === "string" ? data.text : "";
+}
+
+async function readFileText(fileHandle, ext, apiBase) {
+  const file = await fileHandle.getFile();
+  let text = "";
+  try {
+    if (EXT_TEXT_PLAIN.has(ext)) {
+      text = await file.text();
+    } else if (EXT_VISION.has(ext)) {
+      text = await extractViaBackend(apiBase, file, ext);
+    }
+  } catch {
+    text = "";
+  }
+  return {
+    size: file.size,
+    lastModified: file.lastModified,
+    text: text.slice(0, FILE_INDEX_MAX_TEXT),
+  };
+}
+
+async function collectFolderFiles(handle) {
+  const files = [];
+  for await (const entry of walkFolder(handle)) {
+    const ext = fileExt(entry.name);
+    if (!EXT_TEXT_PLAIN.has(ext) && !EXT_VISION.has(ext)) continue;
+    files.push({ ...entry, ext });
+    if (files.length >= FILE_INDEX_MAX_FILES) break;
+  }
+  return files;
+}
+
+async function indexFolderFully(handle, apiBase, onProgress) {
+  const found = await collectFolderFiles(handle);
+  const files = [];
+  for (let i = 0; i < found.length; i++) {
+    const f = found[i];
+    onProgress?.({ current: i + 1, total: found.length, name: f.name });
+    const info = await readFileText(f.handle, f.ext, apiBase);
+    files.push({
+      id: `${f.path}#${info.lastModified}`,
+      path: f.path,
+      name: f.name,
+      size: info.size,
+      lastModified: info.lastModified,
+      text: info.text,
+    });
+  }
+  return files;
+}
+
+async function syncFolderIncremental(handle, existingFiles, apiBase, onProgress) {
+  const found = await collectFolderFiles(handle);
+  const existing = new Map(existingFiles.map((f) => [f.path, f]));
+  const seen = new Set();
+  const result = [];
+  let processed = 0;
+  let total = 0;
+  const stats = await Promise.all(
+    found.map(async (f) => {
+      const file = await f.handle.getFile();
+      return { f, size: file.size, lastModified: file.lastModified };
+    })
+  );
+  for (const s of stats) {
+    const prev = existing.get(s.f.path);
+    if (!prev || prev.lastModified !== s.lastModified) total += 1;
+  }
+  for (const s of stats) {
+    seen.add(s.f.path);
+    const prev = existing.get(s.f.path);
+    if (prev && prev.lastModified === s.lastModified) {
+      result.push(prev);
+      continue;
+    }
+    processed += 1;
+    onProgress?.({ current: processed, total, name: s.f.name });
+    const info = await readFileText(s.f.handle, s.f.ext, apiBase);
+    result.push({
+      id: `${s.f.path}#${info.lastModified}`,
+      path: s.f.path,
+      name: s.f.name,
+      size: info.size,
+      lastModified: info.lastModified,
+      text: info.text,
+    });
+  }
+  const changed = total > 0 || result.length !== existingFiles.length;
+  return { files: result, changed };
+}
+
+async function resolveFileFromHandle(folderHandle, path) {
+  const parts = path.split("/");
+  const filename = parts.pop();
+  let dir = folderHandle;
+  for (const seg of parts) {
+    dir = await dir.getDirectoryHandle(seg);
+  }
+  const fileHandle = await dir.getFileHandle(filename);
+  return fileHandle.getFile();
+}
+
+function loadFileIndex() {
+  try {
+    const raw = localStorage.getItem(FILE_INDEX_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && Array.isArray(parsed.folders)) return parsed;
+    }
+  } catch {
+    // ignore
+  }
+  return { folders: [] };
+}
 
 const CONTACT_TYPES = [
   "Behörde",
@@ -230,6 +442,24 @@ function IconCalendar({ size = 20 }) {
   );
 }
 
+function IconSettings({ size = 20 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...svgProps}>
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+    </svg>
+  );
+}
+
+function IconFile({ size = 20 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...svgProps}>
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+      <polyline points="14 2 14 8 20 8" />
+    </svg>
+  );
+}
+
 const CATEGORY_SYMBOLS = {
   Finanzamt: "§",
   Krankenkasse: "+",
@@ -250,6 +480,7 @@ const NAV_ITEMS = [
   { id: "categories", label: "Kategorien", Icon: IconGrid },
   { id: "contacts", label: "Kontakte", Icon: IconContacts },
   { id: "archive", label: "Archiv", Icon: IconArchive },
+  { id: "settings", label: "Einstellungen", Icon: IconSettings },
 ];
 
 const INITIAL_DOCS = [];
@@ -1225,7 +1456,16 @@ function parseDateQuery(s) {
   return null;
 }
 
-function searchAll(query, { docs, contacts, reminders, events }) {
+function makeTextSnippet(text, query, before = 30, after = 60) {
+  if (!text) return "";
+  const idx = text.toLowerCase().indexOf(query.toLowerCase());
+  if (idx < 0) return text.slice(0, before + after);
+  const start = Math.max(0, idx - before);
+  const end = Math.min(text.length, idx + query.length + after);
+  return (start > 0 ? "…" : "") + text.slice(start, end).replace(/\s+/g, " ") + (end < text.length ? "…" : "");
+}
+
+function searchAll(query, { docs, contacts, reminders, events, fileIndex }) {
   const qRaw = query.trim();
   if (!qRaw) return null;
   const q = qRaw.toLowerCase();
@@ -1301,16 +1541,44 @@ function searchAll(query, { docs, contacts, reminders, events }) {
       dateField("Datum", e.date);
     if (match) eventHits.push({ item: e, ...match });
   }
+  const localFileHits = [];
+  if (fileIndex && Array.isArray(fileIndex.folders)) {
+    for (const folder of fileIndex.folders) {
+      for (const f of folder.files) {
+        const nameMatch =
+          f.name.toLowerCase().includes(q) ||
+          (qCompact && normalizeCompact(f.name).includes(qCompact));
+        if (nameMatch) {
+          localFileHits.push({
+            item: { ...f, folderId: folder.id, folderName: folder.name },
+            field: "Dateiname",
+            snippet: f.path,
+          });
+          continue;
+        }
+        if (f.text && f.text.toLowerCase().includes(q)) {
+          localFileHits.push({
+            item: { ...f, folderId: folder.id, folderName: folder.name },
+            field: "Inhalt",
+            snippet: makeTextSnippet(f.text, qRaw),
+          });
+        }
+      }
+    }
+  }
+
   const total =
     docHits.length +
     contactHits.length +
     reminderHits.length +
-    eventHits.length;
+    eventHits.length +
+    localFileHits.length;
   return {
     docs: docHits,
     contacts: contactHits,
     reminders: reminderHits,
     events: eventHits,
+    localFiles: localFileHits,
     total,
   };
 }
@@ -1335,10 +1603,12 @@ function SearchModal({
   contacts,
   reminders,
   events,
+  fileIndex,
   onOpenDoc,
   onOpenContact,
   onOpenReminder,
   onOpenEvent,
+  onOpenLocalFile,
   onClose,
 }) {
   const [query, setQuery] = useState("");
@@ -1349,8 +1619,8 @@ function SearchModal({
   }, []);
 
   const results = useMemo(
-    () => searchAll(query, { docs, contacts, reminders, events }),
-    [query, docs, contacts, reminders, events]
+    () => searchAll(query, { docs, contacts, reminders, events, fileIndex }),
+    [query, docs, contacts, reminders, events, fileIndex]
   );
 
   function pick(handler) {
@@ -1363,6 +1633,10 @@ function SearchModal({
   const openContact = pick(onOpenContact);
   const openReminder = pick(onOpenReminder);
   const openEvent = pick(onOpenEvent);
+  function openLocalFile(item) {
+    onClose();
+    onOpenLocalFile(item);
+  }
 
   return (
     <Modal onClose={onClose}>
@@ -1477,6 +1751,23 @@ function SearchModal({
                     field={h.field}
                     snippet={h.snippet}
                     onClick={() => openEvent(h.item.id)}
+                  />
+                ))}
+              </section>
+            )}
+            {results.localFiles && results.localFiles.length > 0 && (
+              <section className="search-group">
+                <h4 className="search-group-title">
+                  Lokale Dateien <span className="search-group-count">{results.localFiles.length}</span>
+                </h4>
+                {results.localFiles.map((h, i) => (
+                  <SearchHit
+                    key={`${h.item.folderId}-${h.item.path}-${i}`}
+                    icon="≡"
+                    title={h.item.name}
+                    field={h.field}
+                    snippet={`${h.item.folderName}/${h.item.path} — ${h.snippet}`}
+                    onClick={() => openLocalFile(h.item)}
                   />
                 ))}
               </section>
@@ -1622,7 +1913,7 @@ function OnboardingScreen({ onDone }) {
   );
 }
 
-function Sidebar({ active, onChange, userEmail, onOpenSearch }) {
+function Sidebar({ active, onChange, userEmail, onOpenSearch, badges = {} }) {
   return (
     <aside className="sidebar">
       <div className="logo">
@@ -1651,6 +1942,7 @@ function Sidebar({ active, onChange, userEmail, onOpenSearch }) {
           >
             <Icon size={18} />
             <span>{label}</span>
+            {badges[id] && <span className="nav-badge" />}
           </button>
         ))}
       </nav>
@@ -1680,7 +1972,7 @@ function Sidebar({ active, onChange, userEmail, onOpenSearch }) {
   );
 }
 
-function BottomNav({ active, onChange }) {
+function BottomNav({ active, onChange, badges = {} }) {
   return (
     <nav className="bottom-nav">
       {NAV_ITEMS.map(({ id, label, Icon }) => (
@@ -1691,6 +1983,7 @@ function BottomNav({ active, onChange }) {
         >
           <Icon size={22} />
           <span>{label}</span>
+          {badges[id] && <span className="nav-badge" />}
         </button>
       ))}
     </nav>
@@ -2227,6 +2520,130 @@ function CalendarView({
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+function formatBytes(n) {
+  if (n == null) return "";
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} kB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function SettingsView({
+  folders,
+  folderStatus,
+  indexing,
+  onAddFolder,
+  onRemoveFolder,
+  onRefreshFolder,
+}) {
+  return (
+    <div className="view">
+      <header className="view-header">
+        <h1>Einstellungen</h1>
+        <p className="lead">Verwalte lokale Ordner und Zugriff.</p>
+      </header>
+
+      {FS_SUPPORTED ? (
+        <>
+          <h2 className="section-title">Lokale Dateien</h2>
+          <p className="settings-text">
+            Gib einen Ordner frei — Büro liest die Dateien darin, extrahiert
+            per Claude den Text aus PDFs und Bildern, und macht alles über die
+            Schnellsuche auffindbar. Max. {FILE_INDEX_MAX_FILES} Dateien pro Ordner.
+            Text- und Markdown-Dateien werden ohne API gelesen.
+          </p>
+
+          <div className="settings-actions">
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={onAddFolder}
+              disabled={indexing.active}
+            >
+              {indexing.active ? "Indiziere…" : "Ordner freigeben"}
+            </button>
+          </div>
+
+          {indexing.active && (
+            <div className="index-progress">
+              <div className="index-progress-label">
+                {indexing.current}/{indexing.total} · {indexing.name || "…"}
+              </div>
+              <div className="progress">
+                <div
+                  className="progress-bar bar-amber"
+                  style={{
+                    width: `${Math.max(4, Math.min(100, (indexing.current / Math.max(1, indexing.total)) * 100))}%`,
+                  }}
+                />
+              </div>
+            </div>
+          )}
+
+          <div className="folder-list">
+            {folders.length === 0 && !indexing.active && (
+              <div className="empty">Noch keine Ordner freigegeben.</div>
+            )}
+            {folders.map((f) => {
+              const status = folderStatus[f.id] || "unknown";
+              const stale = status === "stale" || status === "missing";
+              return (
+                <div key={f.id} className="card folder-card">
+                  <div className="folder-body">
+                    <div className="folder-name-row">
+                      <IconFile size={16} />
+                      <span className="folder-name">{f.name}</span>
+                      {stale && (
+                        <span className="folder-badge">
+                          {status === "missing" ? "Handle verloren" : "Zugriff abgelaufen"}
+                        </span>
+                      )}
+                    </div>
+                    <div className="folder-meta">
+                      {f.files.length} Datei{f.files.length === 1 ? "" : "en"}
+                      {f.indexedAt && ` · zuletzt indiziert ${formatDate(f.indexedAt)}`}
+                    </div>
+                  </div>
+                  <div className="folder-actions">
+                    {stale && status !== "missing" && (
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        onClick={() => onRefreshFolder(f.id)}
+                      >
+                        Zugriff erneuern
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="btn-secondary btn-danger"
+                      onClick={() => onRemoveFolder(f.id)}
+                    >
+                      Entfernen
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <p className="settings-hint">
+            Funktioniert nur in Chrome und Edge. In Safari ist die File System
+            Access API nicht verfügbar.
+          </p>
+        </>
+      ) : (
+        <div className="card empty-card">
+          <div className="empty-title">Nicht unterstützt</div>
+          <div className="empty-sub">
+            Lokale Ordner können nur in Chrome oder Edge freigegeben werden.
+            Safari unterstützt die File System Access API nicht.
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -3033,6 +3450,15 @@ export default function App() {
   const [deadlineEditDocId, setDeadlineEditDocId] = useState(null);
   const [appealDocId, setAppealDocId] = useState(null);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [fileIndex, setFileIndex] = useState(loadFileIndex);
+  const [folderStatus, setFolderStatus] = useState({});
+  const [indexing, setIndexing] = useState({
+    active: false,
+    current: 0,
+    total: 0,
+    name: "",
+  });
+  const folderHandlesRef = useRef(new Map());
   const [selectedEventId, setSelectedEventId] = useState(null);
   const [eventFormOpen, setEventFormOpen] = useState(false);
   const [eventFormMode, setEventFormMode] = useState("add");
@@ -3074,6 +3500,25 @@ export default function App() {
   }, [events]);
 
   useEffect(() => {
+    try {
+      localStorage.setItem(FILE_INDEX_KEY, JSON.stringify(fileIndex));
+    } catch {
+      // storage full — drop the extracted text to save space
+      try {
+        const trimmed = {
+          folders: fileIndex.folders.map((f) => ({
+            ...f,
+            files: f.files.map((x) => ({ ...x, text: "" })),
+          })),
+        };
+        localStorage.setItem(FILE_INDEX_KEY, JSON.stringify(trimmed));
+      } catch {
+        // give up
+      }
+    }
+  }, [fileIndex]);
+
+  useEffect(() => {
     if (!onboardingDone) return;
     sendDeadlineReminders(docs, reminders);
     // Only run when onboarding transitions to done (returning users on mount,
@@ -3090,6 +3535,69 @@ export default function App() {
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  useEffect(() => {
+    if (!FS_SUPPORTED) return;
+    let cancelled = false;
+    (async () => {
+      let stored;
+      try {
+        stored = await idbGetAll();
+      } catch {
+        return;
+      }
+      if (cancelled) return;
+      const currentIndex = loadFileIndex();
+      const knownIds = new Set(currentIndex.folders.map((f) => f.id));
+      for (const { id, handle } of stored) {
+        if (knownIds.has(id)) folderHandlesRef.current.set(id, handle);
+      }
+      const statuses = {};
+      for (const folder of currentIndex.folders) {
+        const handle = folderHandlesRef.current.get(folder.id);
+        if (!handle) {
+          statuses[folder.id] = "missing";
+          continue;
+        }
+        try {
+          const perm = await handle.queryPermission({ mode: "read" });
+          statuses[folder.id] = perm === "granted" ? "granted" : "stale";
+        } catch {
+          statuses[folder.id] = "stale";
+        }
+      }
+      if (cancelled) return;
+      setFolderStatus(statuses);
+
+      for (const folder of currentIndex.folders) {
+        if (statuses[folder.id] !== "granted") continue;
+        const handle = folderHandlesRef.current.get(folder.id);
+        try {
+          const { files, changed } = await syncFolderIncremental(
+            handle,
+            folder.files,
+            API_BASE,
+            null
+          );
+          if (cancelled) return;
+          if (changed) {
+            setFileIndex((prev) => ({
+              folders: prev.folders.map((f) =>
+                f.id === folder.id
+                  ? { ...f, files, indexedAt: isoLocal(TODAY) }
+                  : f
+              ),
+            }));
+          }
+        } catch {
+          // ignore per-folder sync failures
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const selectedDoc = docs.find((d) => d.id === selectedId);
@@ -3303,6 +3811,119 @@ export default function App() {
     if (id) setSelectedId(id);
   }
 
+  async function addFolder() {
+    if (!FS_SUPPORTED) return;
+    let handle;
+    try {
+      handle = await window.showDirectoryPicker({ mode: "read" });
+    } catch {
+      return;
+    }
+    const id = "f" + Date.now();
+    folderHandlesRef.current.set(id, handle);
+    try {
+      await idbPut(id, handle);
+    } catch {
+      // ignore
+    }
+    setIndexing({ active: true, current: 0, total: 0, name: handle.name });
+    try {
+      const files = await indexFolderFully(handle, API_BASE, (p) =>
+        setIndexing({ active: true, ...p })
+      );
+      const folder = {
+        id,
+        name: handle.name,
+        addedAt: isoLocal(TODAY),
+        indexedAt: isoLocal(TODAY),
+        files,
+      };
+      setFileIndex((prev) => ({ folders: [folder, ...prev.folders] }));
+      setFolderStatus((prev) => ({ ...prev, [id]: "granted" }));
+    } catch (e) {
+      alert("Indizierung fehlgeschlagen: " + e.message);
+      folderHandlesRef.current.delete(id);
+      idbDelete(id).catch(() => {});
+    } finally {
+      setIndexing({ active: false, current: 0, total: 0, name: "" });
+    }
+  }
+
+  async function removeFolder(id) {
+    const f = fileIndex.folders.find((x) => x.id === id);
+    if (!f) return;
+    if (!confirm(`Ordner "${f.name}" entfernen?`)) return;
+    folderHandlesRef.current.delete(id);
+    try {
+      await idbDelete(id);
+    } catch {
+      // ignore
+    }
+    setFileIndex((prev) => ({
+      folders: prev.folders.filter((x) => x.id !== id),
+    }));
+    setFolderStatus((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  }
+
+  async function refreshFolder(id) {
+    const handle = folderHandlesRef.current.get(id);
+    if (!handle) return;
+    try {
+      const perm = await handle.requestPermission({ mode: "read" });
+      if (perm !== "granted") return;
+    } catch {
+      return;
+    }
+    setFolderStatus((prev) => ({ ...prev, [id]: "granted" }));
+    setIndexing({ active: true, current: 0, total: 0, name: handle.name });
+    try {
+      const folder = fileIndex.folders.find((x) => x.id === id);
+      const { files } = await syncFolderIncremental(
+        handle,
+        folder ? folder.files : [],
+        API_BASE,
+        (p) => setIndexing({ active: true, ...p })
+      );
+      setFileIndex((prev) => ({
+        folders: prev.folders.map((f) =>
+          f.id === id ? { ...f, files, indexedAt: isoLocal(TODAY) } : f
+        ),
+      }));
+    } catch (e) {
+      alert("Re-Indizierung fehlgeschlagen: " + e.message);
+    } finally {
+      setIndexing({ active: false, current: 0, total: 0, name: "" });
+    }
+  }
+
+  async function openLocalFile(item) {
+    const handle = folderHandlesRef.current.get(item.folderId);
+    if (!handle) {
+      alert("Ordner nicht mehr verfügbar. Bitte im Einstellungen-Tab neu freigeben.");
+      return;
+    }
+    try {
+      const perm = await handle.queryPermission({ mode: "read" });
+      if (perm !== "granted") {
+        const ask = await handle.requestPermission({ mode: "read" });
+        if (ask !== "granted") return;
+      }
+      const file = await resolveFileFromHandle(handle, item.path);
+      const url = URL.createObjectURL(file);
+      const win = window.open(url, "_blank");
+      if (!win) {
+        alert("Popup-Blocker verhindert das Öffnen der Datei.");
+      }
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (e) {
+      alert("Datei konnte nicht geöffnet werden: " + e.message);
+    }
+  }
+
   function openAddEvent(dateIso) {
     setEventFormMode("add");
     setSelectedEventId(null);
@@ -3426,6 +4047,12 @@ export default function App() {
     );
   }
 
+  const hasStaleFolders = fileIndex.folders.some((f) => {
+    const s = folderStatus[f.id];
+    return s === "stale" || s === "missing";
+  });
+  const navBadges = { settings: hasStaleFolders };
+
   return (
     <div className="app">
       <Sidebar
@@ -3433,6 +4060,7 @@ export default function App() {
         onChange={navigate}
         userEmail={userEmail}
         onOpenSearch={() => setSearchOpen(true)}
+        badges={navBadges}
       />
       <button
         type="button"
@@ -3498,8 +4126,18 @@ export default function App() {
             onOpenDoc={setSelectedId}
           />
         )}
+        {tab === "settings" && (
+          <SettingsView
+            folders={fileIndex.folders}
+            folderStatus={folderStatus}
+            indexing={indexing}
+            onAddFolder={addFolder}
+            onRemoveFolder={removeFolder}
+            onRefreshFolder={refreshFolder}
+          />
+        )}
       </main>
-      <BottomNav active={tab} onChange={navigate} />
+      <BottomNav active={tab} onChange={navigate} badges={navBadges} />
 
       {selectedDoc && !deadlineEditDocId && (
         <DocumentModal
@@ -3641,11 +4279,13 @@ export default function App() {
           contacts={contacts}
           reminders={reminders}
           events={events}
+          fileIndex={fileIndex}
           onClose={() => setSearchOpen(false)}
           onOpenDoc={setSelectedId}
           onOpenContact={setSelectedContactId}
           onOpenReminder={setSelectedReminderId}
           onOpenEvent={setSelectedEventId}
+          onOpenLocalFile={openLocalFile}
         />
       )}
 
