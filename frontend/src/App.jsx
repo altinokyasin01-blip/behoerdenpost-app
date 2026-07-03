@@ -10,6 +10,9 @@ const EMAIL_KEY = "user_email";
 const CONTACTS_KEY = "behoerdenpost_contacts";
 const REMINDERS_KEY = "behoerdenpost_reminders";
 const EVENTS_KEY = "behoerdenpost_events";
+const THEME_KEY = "buero_theme";
+const THEME_CHOICES = ["system", "light", "dark"];
+const THEME_LABEL = { system: "System", light: "Hell", dark: "Dunkel" };
 const FILE_INDEX_KEY = "buero_file_index";
 const FILE_INDEX_MAX_FILES = 50;
 const FILE_INDEX_MAX_TEXT = 5000;
@@ -558,6 +561,46 @@ function IconFile({ size = 20 }) {
     </svg>
   );
 }
+
+function IconSun({ size = 18 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...svgProps}>
+      <circle cx="12" cy="12" r="4" />
+      <line x1="12" y1="1" x2="12" y2="4" />
+      <line x1="12" y1="20" x2="12" y2="23" />
+      <line x1="4.22" y1="4.22" x2="6.34" y2="6.34" />
+      <line x1="17.66" y1="17.66" x2="19.78" y2="19.78" />
+      <line x1="1" y1="12" x2="4" y2="12" />
+      <line x1="20" y1="12" x2="23" y2="12" />
+      <line x1="4.22" y1="19.78" x2="6.34" y2="17.66" />
+      <line x1="17.66" y1="6.34" x2="19.78" y2="4.22" />
+    </svg>
+  );
+}
+
+function IconMoon({ size = 18 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...svgProps}>
+      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+    </svg>
+  );
+}
+
+function IconMonitor({ size = 18 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...svgProps}>
+      <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+      <line x1="8" y1="21" x2="16" y2="21" />
+      <line x1="12" y1="17" x2="12" y2="21" />
+    </svg>
+  );
+}
+
+const THEME_ICON = {
+  system: IconMonitor,
+  light: IconSun,
+  dark: IconMoon,
+};
 
 const CATEGORY_SYMBOLS = {
   Finanzamt: "§",
@@ -2012,7 +2055,16 @@ function OnboardingScreen({ onDone }) {
   );
 }
 
-function Sidebar({ active, onChange, userEmail, onOpenSearch, badges = {} }) {
+function Sidebar({
+  active,
+  onChange,
+  userEmail,
+  onOpenSearch,
+  badges = {},
+  themeChoice,
+  onCycleTheme,
+}) {
+  const ThemeIcon = THEME_ICON[themeChoice] || IconMonitor;
   return (
     <aside className="sidebar">
       <div className="logo">
@@ -2053,6 +2105,15 @@ function Sidebar({ active, onChange, userEmail, onOpenSearch, badges = {} }) {
           <div className="user-email">{userEmail}</div>
         </div>
       )}
+      <button
+        type="button"
+        className="sidebar-theme"
+        onClick={onCycleTheme}
+        aria-label={`Design: ${THEME_LABEL[themeChoice]}`}
+      >
+        <ThemeIcon size={16} />
+        <span>{THEME_LABEL[themeChoice]}</span>
+      </button>
       <button
         type="button"
         className="dev-reset"
@@ -2634,6 +2695,8 @@ function SettingsView({
   folders,
   folderStatus,
   indexing,
+  themeChoice,
+  onSetTheme,
   onAddFolder,
   onRemoveFolder,
   onRefreshFolder,
@@ -2642,8 +2705,29 @@ function SettingsView({
     <div className="view">
       <header className="view-header">
         <h1>Einstellungen</h1>
-        <p className="lead">Verwalte lokale Ordner und Zugriff.</p>
+        <p className="lead">Design und lokale Dateien verwalten.</p>
       </header>
+
+      <h2 className="section-title">Darstellung</h2>
+      <div className="filter-pills">
+        {THEME_CHOICES.map((choice) => {
+          const Icon = THEME_ICON[choice];
+          return (
+            <button
+              key={choice}
+              type="button"
+              className={`pill ${themeChoice === choice ? "active" : ""}`}
+              onClick={() => onSetTheme(choice)}
+            >
+              <Icon size={14} />
+              <span>{THEME_LABEL[choice]}</span>
+            </button>
+          );
+        })}
+      </div>
+      <p className="settings-hint">
+        „System" folgt der Einstellung deines Betriebssystems.
+      </p>
 
       {FS_SUPPORTED ? (
         <>
@@ -3570,6 +3654,14 @@ export default function App() {
   const [eventFormOpen, setEventFormOpen] = useState(false);
   const [eventFormMode, setEventFormMode] = useState("add");
   const [eventFormPrefill, setEventFormPrefill] = useState(null);
+  const [themeChoice, setThemeChoice] = useState(() => {
+    try {
+      const v = localStorage.getItem(THEME_KEY);
+      return THEME_CHOICES.includes(v) ? v : "system";
+    } catch {
+      return "system";
+    }
+  });
   const [disclaimerOpen, setDisclaimerOpen] = useState(loadDisclaimerOpen);
   const [onboardingDone, setOnboardingDone] = useState(loadOnboardingDone);
   const [userEmail, setUserEmail] = useState(loadUserEmail);
@@ -3643,6 +3735,41 @@ export default function App() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(THEME_KEY, themeChoice);
+    } catch {
+      // ignore
+    }
+    const mm =
+      typeof window !== "undefined" && window.matchMedia
+        ? window.matchMedia("(prefers-color-scheme: dark)")
+        : null;
+    function apply() {
+      const resolved =
+        themeChoice === "dark" ||
+        (themeChoice === "system" && mm && mm.matches)
+          ? "dark"
+          : "light";
+      document.documentElement.dataset.theme = resolved;
+    }
+    apply();
+    if (themeChoice === "system" && mm) {
+      const handler = () => apply();
+      if (mm.addEventListener) mm.addEventListener("change", handler);
+      else mm.addListener(handler);
+      return () => {
+        if (mm.removeEventListener) mm.removeEventListener("change", handler);
+        else mm.removeListener(handler);
+      };
+    }
+  }, [themeChoice]);
+
+  function cycleTheme() {
+    const i = THEME_CHOICES.indexOf(themeChoice);
+    setThemeChoice(THEME_CHOICES[(i + 1) % THEME_CHOICES.length]);
+  }
 
   useEffect(() => {
     if (!FS_SUPPORTED) return;
@@ -4166,6 +4293,8 @@ export default function App() {
         userEmail={userEmail}
         onOpenSearch={() => setSearchOpen(true)}
         badges={navBadges}
+        themeChoice={themeChoice}
+        onCycleTheme={cycleTheme}
       />
       <button
         type="button"
@@ -4236,6 +4365,8 @@ export default function App() {
             folders={fileIndex.folders}
             folderStatus={folderStatus}
             indexing={indexing}
+            themeChoice={themeChoice}
+            onSetTheme={setThemeChoice}
             onAddFolder={addFolder}
             onRemoveFolder={removeFolder}
             onRefreshFolder={refreshFolder}
