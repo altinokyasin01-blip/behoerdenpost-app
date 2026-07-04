@@ -19,7 +19,8 @@ const ALLOWED_DEADLINE_TYPES = [
   "sonstiges",
 ];
 
-const SYSTEM_PROMPT = `Du bist ein Assistent zur Analyse deutscher Behördenpost.
+const SYSTEM_PROMPT = `Du bist ein Assistent zur Analyse deutscher amtlicher
+und geschäftlicher Post (Bescheide, Rechnungen, Verträge, Mahnungen).
 Analysiere das übermittelte Dokument und antworte AUSSCHLIESSLICH mit einem
 JSON-Objekt in exakt diesem Schema (keine Markdown-Codeblöcke, kein Fließtext):
 
@@ -298,44 +299,6 @@ async function analyzeAppeal({ documentType, summary, deadlineType }) {
   };
 }
 
-const EXTRACT_SYSTEM_PROMPT = `Du erhältst ein Dokument (PDF, Bild oder Scan).
-Gib den enthaltenen Text so wortgetreu wie möglich als reinen Fließtext zurück.
-
-Regeln:
-- Nur Text — keine Markdown-Formatierung, keine Kommentare, kein JSON, keine Codeblöcke.
-- Beibehalten: Absätze durch Leerzeilen, sinnvolle Zeilenumbrüche.
-- Tabellen als Text serialisieren (z.B. mit " | " als Trenner).
-- Erkennst du keinen Text, gib einen leeren String zurück.
-- Kein Vorspann wie "Hier ist der Text:" — direkt der Inhalt.`;
-
-async function extractText(base64, mimeType) {
-  const response = await getClient().messages.create({
-    model: MODEL,
-    max_tokens: 4096,
-    system: EXTRACT_SYSTEM_PROMPT,
-    messages: [
-      {
-        role: "user",
-        content: [
-          buildContentBlock(base64, mimeType),
-          {
-            type: "text",
-            text: "Extrahiere den Text aus diesem Dokument.",
-          },
-        ],
-      },
-    ],
-  });
-
-  const text = response.content
-    .filter((block) => block.type === "text")
-    .map((block) => block.text)
-    .join("")
-    .trim();
-
-  return text;
-}
-
 const QR_SYSTEM_PROMPT = `Du analysierst den Textinhalt eines QR-Codes oder Barcodes.
 Häufigste Fälle im deutschen Kontext: SEPA-Überweisung (EPC-QR beginnt mit "BCD\\n"),
 URL (http/https), vCard (BEGIN:VCARD), WLAN-Zugang (WIFI:), reiner Text.
@@ -525,7 +488,6 @@ async function generateTemplate({
 module.exports = {
   analyzeDocument,
   analyzeAppeal,
-  extractText,
   analyzeQrContent,
   generateTemplate,
 };

@@ -3,13 +3,41 @@ import API_BASE from "./config.js";
 import "./App.css";
 
 const TODAY = new Date("2026-07-02T00:00:00");
-const STORAGE_KEY = "behoerdenpost_docs";
-const DISCLAIMER_KEY = "disclaimer_shown";
-const ONBOARDING_KEY = "onboarding_done";
-const EMAIL_KEY = "user_email";
-const CONTACTS_KEY = "behoerdenpost_contacts";
-const REMINDERS_KEY = "behoerdenpost_reminders";
-const EVENTS_KEY = "behoerdenpost_events";
+const STORAGE_KEY = "buero_docs";
+const DISCLAIMER_KEY = "buero_disclaimer_shown";
+const ONBOARDING_KEY = "buero_onboarding_done";
+const EMAIL_KEY = "buero_user_email";
+const CONTACTS_KEY = "buero_contacts";
+const REMINDERS_KEY = "buero_reminders";
+const EVENTS_KEY = "buero_events";
+
+const LEGACY_KEY_MAP = {
+  buero_docs: "behoerdenpost_docs",
+  buero_contacts: "behoerdenpost_contacts",
+  buero_reminders: "behoerdenpost_reminders",
+  buero_events: "behoerdenpost_events",
+  buero_disclaimer_shown: "disclaimer_shown",
+  buero_onboarding_done: "onboarding_done",
+  buero_user_email: "user_email",
+};
+
+(function migrateLegacyKeys() {
+  if (typeof localStorage === "undefined") return;
+  for (const [newKey, oldKey] of Object.entries(LEGACY_KEY_MAP)) {
+    try {
+      const existing = localStorage.getItem(newKey);
+      const legacy = localStorage.getItem(oldKey);
+      if (existing === null && legacy !== null) {
+        localStorage.setItem(newKey, legacy);
+      }
+      if (legacy !== null) {
+        localStorage.removeItem(oldKey);
+      }
+    } catch {
+      // ignore per-key migration failures
+    }
+  }
+})();
 const THEME_KEY = "buero_theme";
 const THEME_CHOICES = ["system", "light", "dark"];
 const THEME_LABEL = { system: "System", light: "Hell", dark: "Dunkel" };
@@ -27,6 +55,14 @@ const PDFJS_URL = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.mi
 const PDFJS_WORKER_URL = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
 const TESSERACT_URL = "https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.0.5/tesseract.min.js";
 const JSQR_URL = "https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js";
+
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || "";
+const GOOGLE_SCOPE = "https://www.googleapis.com/auth/calendar";
+const GIS_URL = "https://accounts.google.com/gsi/client";
+const GOOGLE_TOKEN_KEY = "buero_google_token";
+const GOOGLE_AUTO_EXPORT_KEY = "buero_google_auto_export";
+const GOOGLE_SHOW_CALENDAR_KEY = "buero_google_show_calendar";
+const GOOGLE_CONFIGURED = !!GOOGLE_CLIENT_ID;
 
 function isSupportedFileExt(ext) {
   return EXT_TEXT_PLAIN.has(ext) || EXT_PDF.has(ext) || EXT_IMAGE.has(ext);
@@ -108,6 +144,182 @@ function getJsQR() {
     });
   }
   return jsQrPromise;
+}
+
+let gisPromise = null;
+function getGoogleOAuth2() {
+  if (!gisPromise) {
+    gisPromise = (async () => {
+      await loadScript(GIS_URL);
+      const api = window.google?.accounts?.oauth2;
+      if (!api) throw new Error("Google Identity Services not available");
+      return api;
+    })().catch((e) => {
+      gisPromise = null;
+      throw e;
+    });
+  }
+  return gisPromise;
+}
+
+function googleSignIn() {
+  if (!GOOGLE_CONFIGURED) {
+    return Promise.reject(new Error("Google Client-ID nicht konfiguriert"));
+  }
+  return new Promise((resolve, reject) => {
+    getGoogleOAuth2()
+      .then((oauth2) => {
+        const client = oauth2.initTokenClient({
+          client_id: GOOGLE_CLIENT_ID,
+          scope: GOOGLE_SCOPE,
+          callback: (resp) => {
+            if (resp.error) {
+              reject(new Error(resp.error_description || resp.error));
+              return;
+            }
+            const expiresIn = Number(resp.expires_in) || 3600;
+            resolve({
+              accessToken: resp.access_token,
+              expiresAt: Date.now() + (expiresIn - 60) * 1000,
+            });
+          },
+          error_callback: (err) =>
+            reject(new Error(err.type || "authorization_failed")),
+        });
+        client.requestAccessToken({ prompt: "" });
+      })
+      .catch(reject);
+  });
+}
+
+function googleRevoke(token) {
+  if (!token) return Promise.resolve();
+  return getGoogleOAuth2()
+    .then((oauth2) => {
+      return new Promise((resolve) => {
+        oauth2.revoke(token, () => resolve());
+      });
+    })
+    .catch(() => {});
+}
+
+async function googleCreateEvent(accessToken, googleEvent) {
+  const res = await fetch(
+    "https://www.googleapis.com/calendar/v3/calendars/primary/events",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(googleEvent),
+    }
+  );
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    if (res.status === 401) throw new Error("token_expired");
+    throw new Error(data.error?.message || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+async function googleListEvents(accessToken, timeMin, timeMax) {
+  const params = new URLSearchParams({
+    timeMin,
+    timeMax,
+    singleEvents: "true",
+    orderBy: "startTime",
+    maxResults: "150",
+  });
+  const res = await fetch(
+    `https://www.googleapis.com/calendar/v3/calendars/primary/events?${params}`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  if (!res.ok) {
+    if (res.status === 401) throw new Error("token_expired");
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error?.message || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+function bueroItemToGoogleEvent(item, kind) {
+  const label =
+    kind === "deadline" ? "Frist" : kind === "reminder" ? "Erinnerung" : "Termin";
+  const title = `${label}: ${item.title}`;
+  const descriptionParts = [
+    "Erstellt von Büro.",
+    item.sender ? `Absender: ${item.sender}` : null,
+    item.amount != null
+      ? `Betrag: ${item.amount.toLocaleString("de-DE", {
+          style: "currency",
+          currency: "EUR",
+        })}`
+      : null,
+    item.notes || item.summary || null,
+  ].filter(Boolean);
+
+  const base = {
+    summary: title,
+    description: descriptionParts.join("\n\n"),
+    extendedProperties: {
+      private: { source: "buero", kind },
+    },
+  };
+
+  if (kind === "event" && item.time) {
+    const [h, m] = item.time.split(":").map(Number);
+    const startIso = `${item.date}T${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:00`;
+    const endH = (h + 1) % 24;
+    const endIso = `${item.date}T${String(endH).padStart(2, "0")}:${String(m).padStart(2, "0")}:00`;
+    return {
+      ...base,
+      start: {
+        dateTime: startIso,
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      },
+      end: {
+        dateTime: endIso,
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      },
+    };
+  }
+
+  const date =
+    kind === "deadline" ? item.deadline : item.date;
+  if (!date) return null;
+  const next = new Date(date + "T00:00:00");
+  next.setDate(next.getDate() + 1);
+  return {
+    ...base,
+    start: { date },
+    end: { date: isoLocal(next) },
+  };
+}
+
+function loadGoogleToken() {
+  try {
+    const raw = localStorage.getItem(GOOGLE_TOKEN_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed.accessToken === "string" && parsed.expiresAt) {
+        return parsed;
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+function loadBoolPref(key, defaultValue) {
+  try {
+    const v = localStorage.getItem(key);
+    if (v === null) return defaultValue;
+    return v === "1";
+  } catch {
+    return defaultValue;
+  }
 }
 
 let ocrWorkerPromise = null;
@@ -1232,6 +1444,22 @@ function CardMenu({ items, ariaLabel = "Menü" }) {
   );
 }
 
+function GoogleSyncToggle({ checked, onChange }) {
+  return (
+    <label className="google-sync-toggle">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+      />
+      <div className="google-sync-body">
+        <div className="google-sync-title">Auch zu Google Calendar hinzufügen</div>
+        <div className="google-sync-sub">Der Eintrag erscheint im verknüpften Google-Kalender.</div>
+      </div>
+    </label>
+  );
+}
+
 function DeadlineEditModal({ doc, onSave, onCancel }) {
   const [date, setDate] = useState(doc.deadline || "");
   const [type, setType] = useState(doc.deadlineType || "sonstiges");
@@ -1293,7 +1521,12 @@ function DeadlineEditModal({ doc, onSave, onCancel }) {
   );
 }
 
-function ManualDeadlineFormModal({ onSave, onCancel }) {
+function ManualDeadlineFormModal({
+  googleConnected,
+  googleAutoExport,
+  onSave,
+  onCancel,
+}) {
   const [form, setForm] = useState({
     title: "",
     sender: "",
@@ -1303,6 +1536,9 @@ function ManualDeadlineFormModal({ onSave, onCancel }) {
     category: "Sonstiges",
     notes: "",
   });
+  const [syncToGoogle, setSyncToGoogle] = useState(
+    googleConnected && googleAutoExport
+  );
   const [error, setError] = useState(null);
 
   function set(field, value) {
@@ -1334,6 +1570,7 @@ function ManualDeadlineFormModal({ onSave, onCancel }) {
       amount: amount,
       category: form.category,
       notes: form.notes.trim(),
+      syncToGoogle: googleConnected && syncToGoogle,
     });
   }
 
@@ -1431,6 +1668,13 @@ function ManualDeadlineFormModal({ onSave, onCancel }) {
           />
         </div>
 
+        {googleConnected && (
+          <GoogleSyncToggle
+            checked={syncToGoogle}
+            onChange={setSyncToGoogle}
+          />
+        )}
+
         {error && <div className="onboarding-error">{error}</div>}
 
         <div className="form-actions">
@@ -1446,7 +1690,14 @@ function ManualDeadlineFormModal({ onSave, onCancel }) {
   );
 }
 
-function ReminderFormModal({ initial, docs, onSave, onCancel }) {
+function ReminderFormModal({
+  initial,
+  docs,
+  googleConnected,
+  googleAutoExport,
+  onSave,
+  onCancel,
+}) {
   const [form, setForm] = useState(() => ({
     title: "",
     date: "",
@@ -1455,6 +1706,9 @@ function ReminderFormModal({ initial, docs, onSave, onCancel }) {
     notes: "",
     ...(initial || {}),
   }));
+  const [syncToGoogle, setSyncToGoogle] = useState(
+    !initial && googleConnected && googleAutoExport
+  );
   const [error, setError] = useState(null);
 
   function set(field, value) {
@@ -1476,6 +1730,7 @@ function ReminderFormModal({ initial, docs, onSave, onCancel }) {
       ...form,
       title: form.title.trim(),
       notes: form.notes ? form.notes.trim() : "",
+      syncToGoogle: googleConnected && syncToGoogle,
     });
   }
 
@@ -1550,6 +1805,13 @@ function ReminderFormModal({ initial, docs, onSave, onCancel }) {
             onChange={(e) => set("notes", e.target.value)}
           />
         </div>
+
+        {googleConnected && !initial && (
+          <GoogleSyncToggle
+            checked={syncToGoogle}
+            onChange={setSyncToGoogle}
+          />
+        )}
 
         {error && <div className="onboarding-error">{error}</div>}
 
@@ -1792,7 +2054,14 @@ function AppealModal({
   );
 }
 
-function EventFormModal({ initial, contacts, onSave, onCancel }) {
+function EventFormModal({
+  initial,
+  contacts,
+  googleConnected,
+  googleAutoExport,
+  onSave,
+  onCancel,
+}) {
   const [form, setForm] = useState(() => ({
     title: "",
     date: "",
@@ -1801,6 +2070,9 @@ function EventFormModal({ initial, contacts, onSave, onCancel }) {
     notes: "",
     ...(initial || {}),
   }));
+  const [syncToGoogle, setSyncToGoogle] = useState(
+    !initial && googleConnected && googleAutoExport
+  );
   const [error, setError] = useState(null);
 
   function set(field, value) {
@@ -1823,6 +2095,7 @@ function EventFormModal({ initial, contacts, onSave, onCancel }) {
       title: form.title.trim(),
       time: form.time || "",
       notes: form.notes ? form.notes.trim() : "",
+      syncToGoogle: googleConnected && syncToGoogle,
     });
   }
 
@@ -1892,6 +2165,13 @@ function EventFormModal({ initial, contacts, onSave, onCancel }) {
             onChange={(e) => set("notes", e.target.value)}
           />
         </div>
+
+        {googleConnected && !initial && (
+          <GoogleSyncToggle
+            checked={syncToGoogle}
+            onChange={setSyncToGoogle}
+          />
+        )}
 
         {error && <div className="onboarding-error">{error}</div>}
 
@@ -2890,20 +3170,6 @@ function Sidebar({
         <ThemeIcon size={16} />
         <span>{THEME_LABEL[themeChoice]}</span>
       </button>
-      <button
-        type="button"
-        className="dev-reset"
-        onClick={() => {
-          try {
-            localStorage.clear();
-          } catch {
-            // ignore
-          }
-          location.reload();
-        }}
-      >
-        Reset (Dev)
-      </button>
     </aside>
   );
 }
@@ -3238,10 +3504,12 @@ function CalendarView({
   docs,
   reminders,
   events,
+  googleEvents,
   contacts,
   onOpenDoc,
   onOpenReminder,
   onOpenEvent,
+  onOpenGoogleEvent,
   onAddEvent,
 }) {
   const [cursor, setCursor] = useState(
@@ -3258,7 +3526,7 @@ function CalendarView({
     function push(iso, kind, item) {
       if (!iso) return;
       if (!map.has(iso)) {
-        map.set(iso, { deadline: [], reminder: [], event: [] });
+        map.set(iso, { deadline: [], reminder: [], event: [], google: [] });
       }
       map.get(iso)[kind].push(item);
     }
@@ -3271,17 +3539,22 @@ function CalendarView({
     for (const e of events) {
       if (e.date) push(e.date, "event", e);
     }
+    for (const ge of googleEvents || []) {
+      const iso = ge.start?.date || ge.start?.dateTime?.slice(0, 10);
+      if (iso) push(iso, "google", ge);
+    }
     return map;
-  }, [docs, reminders, events]);
+  }, [docs, reminders, events, googleEvents]);
 
   const cells = useMemo(() => generateMonthCells(year, month), [year, month]);
 
-  const emptyDay = { deadline: [], reminder: [], event: [] };
+  const emptyDay = { deadline: [], reminder: [], event: [], google: [] };
   const selectedEntries = entriesByDay.get(selectedDate) || emptyDay;
   const selectedIsEmpty =
     selectedEntries.deadline.length === 0 &&
     selectedEntries.reminder.length === 0 &&
-    selectedEntries.event.length === 0;
+    selectedEntries.event.length === 0 &&
+    selectedEntries.google.length === 0;
 
   const agenda = useMemo(() => {
     const days = [];
@@ -3297,7 +3570,8 @@ function CalendarView({
         entries &&
         (entries.deadline.length ||
           entries.reminder.length ||
-          entries.event.length)
+          entries.event.length ||
+          entries.google.length)
       ) {
         days.push({ iso, entries });
       }
@@ -3379,6 +3653,9 @@ function CalendarView({
                   {entry.event.length > 0 && (
                     <span className="calendar-dot dot-blue" />
                   )}
+                  {entry.google.length > 0 && (
+                    <span className="calendar-dot dot-slate" />
+                  )}
                 </div>
               )}
             </button>
@@ -3454,6 +3731,28 @@ function CalendarView({
               </button>
             );
           })}
+          {selectedEntries.google.map((ge) => {
+            const time = ge.start?.dateTime?.slice(11, 16);
+            return (
+              <button
+                key={"g" + ge.id}
+                type="button"
+                className="day-entry"
+                onClick={() => onOpenGoogleEvent(ge)}
+              >
+                <span className="entry-marker marker-slate" />
+                <div className="entry-body">
+                  <div className="entry-title">
+                    {ge.summary || "(Ohne Titel)"}
+                  </div>
+                  <div className="entry-meta">
+                    Google Calendar
+                    {time && ` · ${time}`}
+                  </div>
+                </div>
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -3504,6 +3803,20 @@ function CalendarView({
                   </span>
                 </button>
               ))}
+              {day.entries.google.map((ge) => (
+                <button
+                  key={"g" + ge.id}
+                  type="button"
+                  className="agenda-entry"
+                  onClick={() => onOpenGoogleEvent(ge)}
+                >
+                  <span className="calendar-dot dot-slate" />
+                  <span className="agenda-title">
+                    {ge.summary || "(Ohne Titel)"}
+                  </span>
+                  <span className="agenda-kind">Google</span>
+                </button>
+              ))}
             </div>
           </div>
         ))}
@@ -3549,6 +3862,14 @@ function SettingsView({
   onRequestNotif,
   onExportData,
   onDeleteAll,
+  googleConnected,
+  googleBusy,
+  googleAutoExport,
+  googleShowCalendar,
+  onGoogleConnect,
+  onGoogleDisconnect,
+  onSetGoogleAutoExport,
+  onSetGoogleShowCalendar,
 }) {
   const [emailEditing, setEmailEditing] = useState(false);
   const [emailDraft, setEmailDraft] = useState(userEmail || "");
@@ -3741,6 +4062,99 @@ function SettingsView({
             )}
           </div>
         </div>
+      </section>
+
+      {/* GOOGLE */}
+      <section className="settings-section">
+        <h2 className="settings-section-title">Google Calendar</h2>
+        {!GOOGLE_CONFIGURED ? (
+          <div className="card empty-card">
+            <div className="empty-title">Noch nicht konfiguriert</div>
+            <div className="empty-sub">
+              Setze <code>VITE_GOOGLE_CLIENT_ID</code> in der Datei{" "}
+              <code>frontend/.env</code>, damit die Verknüpfung sichtbar wird.
+            </div>
+          </div>
+        ) : (
+          <div className="settings-group">
+            <div className="settings-row">
+              <div className="settings-row-body">
+                <div className="settings-row-label">
+                  {googleConnected ? "Verbunden" : "Nicht verbunden"}
+                </div>
+                <div className="settings-row-sub">
+                  {googleConnected
+                    ? "Zugriff aktiv — Büro darf Einträge erstellen und lesen."
+                    : "Melde dich mit deinem Google-Konto an, um Fristen und Termine zu synchronisieren."}
+                </div>
+              </div>
+              {googleConnected ? (
+                <button
+                  type="button"
+                  className="btn-secondary btn-primary-sm"
+                  onClick={onGoogleDisconnect}
+                  disabled={googleBusy}
+                >
+                  Trennen
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="btn-primary btn-primary-sm"
+                  onClick={onGoogleConnect}
+                  disabled={googleBusy}
+                >
+                  {googleBusy ? "Verbinde…" : "Mit Google verbinden"}
+                </button>
+              )}
+            </div>
+            <div className="settings-row">
+              <div className="settings-row-body">
+                <div className="settings-row-label">
+                  Neue Einträge automatisch zu Google
+                </div>
+                <div className="settings-row-sub">
+                  Fristen, Erinnerungen und Termine werden nach dem Speichern
+                  automatisch in deinen Google-Kalender geschrieben.
+                </div>
+              </div>
+              <label className="settings-switch">
+                <input
+                  type="checkbox"
+                  checked={googleAutoExport}
+                  onChange={(e) => onSetGoogleAutoExport(e.target.checked)}
+                  disabled={!googleConnected}
+                />
+                <span className="settings-switch-track" />
+              </label>
+            </div>
+            <div className="settings-row">
+              <div className="settings-row-body">
+                <div className="settings-row-label">
+                  Google-Termine im Kalender anzeigen
+                </div>
+                <div className="settings-row-sub">
+                  Zeigt deine nächsten 30 Tage aus Google Calendar als
+                  eigene Farbe im Kalender-Tab.
+                </div>
+              </div>
+              <label className="settings-switch">
+                <input
+                  type="checkbox"
+                  checked={googleShowCalendar}
+                  onChange={(e) => onSetGoogleShowCalendar(e.target.checked)}
+                  disabled={!googleConnected}
+                />
+                <span className="settings-switch-track" />
+              </label>
+            </div>
+          </div>
+        )}
+        <p className="settings-hint">
+          Deine Google-Daten verlassen nie Büro ohne deine Erlaubnis. Alle
+          Aufrufe laufen direkt aus dem Browser gegen die Google API — kein
+          Server dazwischen.
+        </p>
       </section>
 
       {/* LOKALE DATEIEN */}
@@ -4858,6 +5272,18 @@ export default function App() {
     if (typeof Notification === "undefined") return "unsupported";
     return Notification.permission;
   });
+  const [googleToken, setGoogleToken] = useState(loadGoogleToken);
+  const [googleAutoExport, setGoogleAutoExport] = useState(() =>
+    loadBoolPref(GOOGLE_AUTO_EXPORT_KEY, true)
+  );
+  const [googleShowCalendar, setGoogleShowCalendar] = useState(() =>
+    loadBoolPref(GOOGLE_SHOW_CALENDAR_KEY, true)
+  );
+  const [googleEvents, setGoogleEvents] = useState([]);
+  const [googleBusy, setGoogleBusy] = useState(false);
+
+  const googleConnected =
+    !!googleToken && googleToken.expiresAt > Date.now();
   const [eventFormOpen, setEventFormOpen] = useState(false);
   const [eventFormMode, setEventFormMode] = useState("add");
   const [eventFormPrefill, setEventFormPrefill] = useState(null);
@@ -4953,6 +5379,12 @@ export default function App() {
   }, [onboardingDone]);
 
   useEffect(() => {
+    if (tab !== "calendar") return;
+    refreshGoogleEvents();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, googleToken, googleShowCalendar]);
+
+  useEffect(() => {
     function onKey(e) {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
@@ -4996,6 +5428,104 @@ export default function App() {
   function cycleTheme() {
     const i = THEME_CHOICES.indexOf(themeChoice);
     setThemeChoice(THEME_CHOICES[(i + 1) % THEME_CHOICES.length]);
+  }
+
+  useEffect(() => {
+    try {
+      if (googleToken) {
+        localStorage.setItem(GOOGLE_TOKEN_KEY, JSON.stringify(googleToken));
+      } else {
+        localStorage.removeItem(GOOGLE_TOKEN_KEY);
+      }
+    } catch {
+      // ignore
+    }
+  }, [googleToken]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(GOOGLE_AUTO_EXPORT_KEY, googleAutoExport ? "1" : "0");
+    } catch {
+      // ignore
+    }
+  }, [googleAutoExport]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(GOOGLE_SHOW_CALENDAR_KEY, googleShowCalendar ? "1" : "0");
+    } catch {
+      // ignore
+    }
+  }, [googleShowCalendar]);
+
+  async function connectGoogle() {
+    if (!GOOGLE_CONFIGURED) {
+      alert(
+        "Google Client-ID nicht konfiguriert. Setze VITE_GOOGLE_CLIENT_ID in der .env-Datei."
+      );
+      return;
+    }
+    setGoogleBusy(true);
+    try {
+      const result = await googleSignIn();
+      setGoogleToken(result);
+    } catch (e) {
+      alert("Google-Anmeldung fehlgeschlagen: " + e.message);
+    } finally {
+      setGoogleBusy(false);
+    }
+  }
+
+  async function disconnectGoogle() {
+    if (googleToken?.accessToken) {
+      googleRevoke(googleToken.accessToken).catch(() => {});
+    }
+    setGoogleToken(null);
+    setGoogleEvents([]);
+  }
+
+  async function exportItemToGoogle(item, kind) {
+    if (!googleConnected) return null;
+    const payload = bueroItemToGoogleEvent(item, kind);
+    if (!payload) return null;
+    try {
+      return await googleCreateEvent(googleToken.accessToken, payload);
+    } catch (e) {
+      if (e.message === "token_expired") {
+        setGoogleToken(null);
+      }
+      // silent for individual exports
+      console.error("Google export failed:", e);
+      return null;
+    }
+  }
+
+  async function refreshGoogleEvents() {
+    if (!googleConnected || !googleShowCalendar) {
+      setGoogleEvents([]);
+      return;
+    }
+    const now = new Date();
+    const later = new Date();
+    later.setDate(later.getDate() + 30);
+    try {
+      const data = await googleListEvents(
+        googleToken.accessToken,
+        now.toISOString(),
+        later.toISOString()
+      );
+      const items = (data.items || []).filter(
+        (e) => e.extendedProperties?.private?.source !== "buero"
+      );
+      setGoogleEvents(items);
+    } catch (e) {
+      if (e.message === "token_expired") {
+        setGoogleToken(null);
+        setGoogleEvents([]);
+      } else {
+        console.error("Failed to load Google events:", e);
+      }
+    }
   }
 
   async function requestNotifPermission() {
@@ -5224,6 +5754,12 @@ export default function App() {
       setContactFormOpen(true);
     }
 
+    if (googleConnected && googleAutoExport) {
+      if (doc.deadline) exportItemToGoogle(doc, "deadline");
+      for (const r of newReminders) exportItemToGoogle(r, "reminder");
+      for (const e of newEvents) exportItemToGoogle(e, "event");
+    }
+
     celebrateFirstScan();
   }
 
@@ -5298,6 +5834,9 @@ export default function App() {
     };
     setDocs((prev) => [doc, ...prev]);
     setManualDeadlineFormOpen(false);
+    if (data.syncToGoogle && doc.deadline) {
+      exportItemToGoogle(doc, "deadline");
+    }
   }
 
   function saveDeadlineEdit({ deadline, deadlineType }) {
@@ -5329,21 +5868,23 @@ export default function App() {
   }
 
   function saveReminder(data) {
+    const { syncToGoogle, ...rest } = data;
     if (reminderFormMode === "edit" && selectedReminderId) {
       setReminders((prev) =>
         prev.map((r) =>
-          r.id === selectedReminderId ? { ...r, ...data } : r
+          r.id === selectedReminderId ? { ...r, ...rest } : r
         )
       );
     } else {
-      setReminders((prev) => [
-        {
-          id: "r" + Date.now(),
-          done: false,
-          ...data,
-        },
-        ...prev,
-      ]);
+      const created = {
+        id: "r" + Date.now(),
+        done: false,
+        ...rest,
+      };
+      setReminders((prev) => [created, ...prev]);
+      if (syncToGoogle && created.date) {
+        exportItemToGoogle(created, "reminder");
+      }
     }
     closeReminderForm();
   }
@@ -5557,15 +6098,17 @@ export default function App() {
   }
 
   function saveEvent(data) {
+    const { syncToGoogle, ...rest } = data;
     if (eventFormMode === "edit" && selectedEventId) {
       setEvents((prev) =>
-        prev.map((e) => (e.id === selectedEventId ? { ...e, ...data } : e))
+        prev.map((e) => (e.id === selectedEventId ? { ...e, ...rest } : e))
       );
     } else {
-      setEvents((prev) => [
-        { id: "e" + Date.now(), ...data },
-        ...prev,
-      ]);
+      const created = { id: "e" + Date.now(), ...rest };
+      setEvents((prev) => [created, ...prev]);
+      if (syncToGoogle && created.date) {
+        exportItemToGoogle(created, "event");
+      }
     }
     closeEventForm();
   }
@@ -5716,10 +6259,14 @@ export default function App() {
             docs={docs}
             reminders={reminders}
             events={events}
+            googleEvents={googleShowCalendar ? googleEvents : []}
             contacts={contacts}
             onOpenDoc={setSelectedId}
             onOpenReminder={setSelectedReminderId}
             onOpenEvent={setSelectedEventId}
+            onOpenGoogleEvent={(ge) => {
+              if (ge.htmlLink) window.open(ge.htmlLink, "_blank");
+            }}
             onAddEvent={openAddEvent}
           />
         )}
@@ -5772,6 +6319,14 @@ export default function App() {
             onRequestNotif={requestNotifPermission}
             onExportData={exportAllData}
             onDeleteAll={deleteAllData}
+            googleConnected={googleConnected}
+            googleBusy={googleBusy}
+            googleAutoExport={googleAutoExport}
+            googleShowCalendar={googleShowCalendar}
+            onGoogleConnect={connectGoogle}
+            onGoogleDisconnect={disconnectGoogle}
+            onSetGoogleAutoExport={setGoogleAutoExport}
+            onSetGoogleShowCalendar={setGoogleShowCalendar}
           />
         )}
       </main>
@@ -5801,6 +6356,8 @@ export default function App() {
 
       {manualDeadlineFormOpen && (
         <ManualDeadlineFormModal
+          googleConnected={googleConnected}
+          googleAutoExport={googleAutoExport}
           onCancel={() => setManualDeadlineFormOpen(false)}
           onSave={saveManualDeadline}
         />
@@ -5834,6 +6391,8 @@ export default function App() {
               : reminderFormPrefill
           }
           docs={docs}
+          googleConnected={googleConnected}
+          googleAutoExport={googleAutoExport}
           onCancel={closeReminderForm}
           onSave={saveReminder}
         />
@@ -5876,6 +6435,8 @@ export default function App() {
               : eventFormPrefill
           }
           contacts={contacts}
+          googleConnected={googleConnected}
+          googleAutoExport={googleAutoExport}
           onCancel={closeEventForm}
           onSave={saveEvent}
         />
