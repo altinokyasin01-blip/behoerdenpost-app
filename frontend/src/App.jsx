@@ -3226,284 +3226,6 @@ function DisclaimerModal({ onAcknowledge }) {
   );
 }
 
-function AuthScreen() {
-  const [mode, setMode] = useState("welcome");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState(null);
-  const [info, setInfo] = useState(null);
-  const [loading, setLoading] = useState(false);
-
-  function reset() {
-    setError(null);
-    setInfo(null);
-  }
-
-  async function handleLogin(e) {
-    e.preventDefault();
-    reset();
-    if (!isValidEmail(email)) {
-      setError("Bitte gib eine gültige E-Mail-Adresse ein.");
-      return;
-    }
-    if (!password) {
-      setError("Bitte gib dein Passwort ein.");
-      return;
-    }
-    setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-    setLoading(false);
-    if (error) setError(error.message);
-    // onAuthStateChange in App picks up the session automatically
-  }
-
-  async function handleRegister(e) {
-    e.preventDefault();
-    reset();
-    if (!isValidEmail(email)) {
-      setError("Bitte gib eine gültige E-Mail-Adresse ein.");
-      return;
-    }
-    if (password.length < 8) {
-      setError("Passwort muss mindestens 8 Zeichen lang sein.");
-      return;
-    }
-    setLoading(true);
-    const { data, error } = await supabase.auth.signUp({ email, password });
-    setLoading(false);
-    if (error) {
-      setError(error.message);
-      return;
-    }
-    if (data.session) {
-      // Auto-confirmation on — App reacts via onAuthStateChange
-    } else {
-      setMode("check-email");
-    }
-  }
-
-  async function handleForgot(e) {
-    e.preventDefault();
-    reset();
-    if (!isValidEmail(email)) {
-      setError("Bitte gib eine gültige E-Mail-Adresse ein.");
-      return;
-    }
-    setLoading(true);
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: window.location.origin,
-    });
-    setLoading(false);
-    if (error) {
-      setError(error.message);
-      return;
-    }
-    setInfo("Falls die Adresse bekannt ist, haben wir dir einen Reset-Link geschickt.");
-  }
-
-  return (
-    <div className="onboarding">
-      <div className="onboarding-card">
-        {mode === "welcome" && (
-          <>
-            <div className="onboarding-logo">B</div>
-            <h1 className="onboarding-title">Willkommen bei Büro</h1>
-            <p className="onboarding-text">
-              Dein persönlicher Assistent für alles was verwaltet werden will —
-              Post scannen, Fristen im Blick, Kontakte an einem Ort.
-            </p>
-            <div className="onboarding-actions">
-              <button
-                type="button"
-                className="btn-primary btn-primary-block"
-                onClick={() => {
-                  reset();
-                  setMode("register");
-                }}
-              >
-                Konto erstellen
-              </button>
-              <button
-                type="button"
-                className="btn-secondary btn-primary-block"
-                onClick={() => {
-                  reset();
-                  setMode("login");
-                }}
-              >
-                Anmelden
-              </button>
-            </div>
-          </>
-        )}
-
-        {mode === "login" && (
-          <form onSubmit={handleLogin}>
-            <h1 className="onboarding-title">Willkommen zurück</h1>
-            <p className="onboarding-text">Melde dich mit E-Mail und Passwort an.</p>
-            <input
-              type="email"
-              className="onboarding-input"
-              placeholder="max@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              autoComplete="email"
-              autoFocus
-            />
-            <input
-              type="password"
-              className="onboarding-input"
-              placeholder="Passwort"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete="current-password"
-            />
-            {error && <div className="onboarding-error">{error}</div>}
-            <button
-              type="submit"
-              className="btn-primary btn-primary-block"
-              disabled={loading}
-            >
-              {loading ? "Melde an…" : "Anmelden"}
-            </button>
-            <div className="auth-links">
-              <button
-                type="button"
-                className="auth-link"
-                onClick={() => {
-                  reset();
-                  setMode("forgot");
-                }}
-              >
-                Passwort vergessen?
-              </button>
-              <button
-                type="button"
-                className="auth-link"
-                onClick={() => {
-                  reset();
-                  setMode("register");
-                }}
-              >
-                Noch kein Konto?
-              </button>
-            </div>
-          </form>
-        )}
-
-        {mode === "register" && (
-          <form onSubmit={handleRegister}>
-            <h1 className="onboarding-title">Konto erstellen</h1>
-            <p className="onboarding-text">
-              Deine Daten liegen in deinem persönlichen Konto — überall
-              zugänglich, sobald du dich anmeldest.
-            </p>
-            <input
-              type="email"
-              className="onboarding-input"
-              placeholder="max@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              autoComplete="email"
-              autoFocus
-            />
-            <input
-              type="password"
-              className="onboarding-input"
-              placeholder="Passwort (min. 8 Zeichen)"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete="new-password"
-            />
-            {error && <div className="onboarding-error">{error}</div>}
-            <button
-              type="submit"
-              className="btn-primary btn-primary-block"
-              disabled={loading}
-            >
-              {loading ? "Erstelle Konto…" : "Konto erstellen"}
-            </button>
-            <div className="auth-links">
-              <button
-                type="button"
-                className="auth-link"
-                onClick={() => {
-                  reset();
-                  setMode("login");
-                }}
-              >
-                Schon ein Konto? Anmelden
-              </button>
-            </div>
-          </form>
-        )}
-
-        {mode === "forgot" && (
-          <form onSubmit={handleForgot}>
-            <h1 className="onboarding-title">Passwort zurücksetzen</h1>
-            <p className="onboarding-text">
-              Wir schicken dir einen Link zum Ändern deines Passworts.
-            </p>
-            <input
-              type="email"
-              className="onboarding-input"
-              placeholder="max@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              autoComplete="email"
-              autoFocus
-            />
-            {error && <div className="onboarding-error">{error}</div>}
-            {info && <div className="onboarding-info">{info}</div>}
-            <button
-              type="submit"
-              className="btn-primary btn-primary-block"
-              disabled={loading || !!info}
-            >
-              {loading ? "Sende…" : "Link senden"}
-            </button>
-            <div className="auth-links">
-              <button
-                type="button"
-                className="auth-link"
-                onClick={() => {
-                  reset();
-                  setMode("login");
-                }}
-              >
-                Zurück zum Login
-              </button>
-            </div>
-          </form>
-        )}
-
-        {mode === "check-email" && (
-          <>
-            <h1 className="onboarding-title">Prüfe dein Postfach</h1>
-            <p className="onboarding-text">
-              Wir haben dir eine Bestätigungs-E-Mail an{" "}
-              <strong>{email}</strong> geschickt. Klicke den Link darin, um
-              dein Konto zu aktivieren.
-            </p>
-            <button
-              type="button"
-              className="btn-secondary btn-primary-block"
-              onClick={() => {
-                reset();
-                setMode("login");
-              }}
-            >
-              Zurück zum Login
-            </button>
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
 
 function AuthConfigMissingScreen() {
   return (
@@ -3565,43 +3287,103 @@ function MigrationPromptModal({ counts, onConfirm, onSkip, busy }) {
   );
 }
 
-function OnboardingScreen({ onDone }) {
-  const [step, setStep] = useState(1);
-  const [email, setEmail] = useState(() => {
-    try {
-      return localStorage.getItem(EMAIL_KEY) || "";
-    } catch {
-      return "";
-    }
+function OnboardingScreen({ session, skipWelcome, onDone }) {
+  // Initial step:
+  //   - Signed-in already (rare case: closed browser between auth and ready)  → step 3
+  //   - Fresh install (no onboarding flag)                                    → step 1 (welcome)
+  //   - Onboarding already completed but user is logged out (returning user)  → step 2 (auth)
+  const [step, setStep] = useState(() => {
+    if (session) return 3;
+    if (skipWelcome) return 2;
+    return 1;
   });
-  const [emailError, setEmailError] = useState(null);
+  const [authMode, setAuthMode] = useState("register");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState(null);
+  const [info, setInfo] = useState(null);
+  const [loading, setLoading] = useState(false);
 
-  function advanceFromEmail() {
+  // If Supabase session appears while on step 2, advance to step 3.
+  useEffect(() => {
+    if (session && step === 2) {
+      setStep(3);
+    }
+  }, [session, step]);
+
+  function resetAuthMessages() {
+    setError(null);
+    setInfo(null);
+  }
+
+  async function handleLogin(e) {
+    e.preventDefault();
+    resetAuthMessages();
     if (!isValidEmail(email)) {
-      setEmailError("Bitte gib eine gültige E-Mail-Adresse ein.");
+      setError("Bitte gib eine gültige E-Mail-Adresse ein.");
       return;
     }
-    try {
-      localStorage.setItem(EMAIL_KEY, email);
-    } catch {
-      // ignore
+    if (!password) {
+      setError("Bitte gib dein Passwort ein.");
+      return;
     }
-    setStep(3);
+    setLoading(true);
+    const { error: authErr } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+    setLoading(false);
+    if (authErr) setError(authErr.message);
+  }
+
+  async function handleRegister(e) {
+    e.preventDefault();
+    resetAuthMessages();
+    if (!isValidEmail(email)) {
+      setError("Bitte gib eine gültige E-Mail-Adresse ein.");
+      return;
+    }
+    if (password.length < 8) {
+      setError("Passwort muss mindestens 8 Zeichen lang sein.");
+      return;
+    }
+    setLoading(true);
+    const { data, error: authErr } = await supabase.auth.signUp({
+      email,
+      password,
+    });
+    setLoading(false);
+    if (authErr) {
+      setError(authErr.message);
+      return;
+    }
+    if (!data.session) {
+      setAuthMode("check-email");
+    }
+  }
+
+  async function handleForgot(e) {
+    e.preventDefault();
+    resetAuthMessages();
+    if (!isValidEmail(email)) {
+      setError("Bitte gib eine gültige E-Mail-Adresse ein.");
+      return;
+    }
+    setLoading(true);
+    const { error: resetErr } = await supabase.auth.resetPasswordForEmail(
+      email,
+      { redirectTo: window.location.origin }
+    );
+    setLoading(false);
+    if (resetErr) {
+      setError(resetErr.message);
+      return;
+    }
+    setInfo("Falls die Adresse bekannt ist, haben wir dir einen Reset-Link geschickt.");
   }
 
   function finish(landing) {
-    onDone(email, landing);
-  }
-
-  function skipOnboarding() {
-    try {
-      if (email && isValidEmail(email)) {
-        localStorage.setItem(EMAIL_KEY, email);
-      }
-    } catch {
-      // ignore
-    }
-    onDone(email || "", "home");
+    onDone(session?.user?.email || "", landing);
   }
 
   return (
@@ -3627,40 +3409,175 @@ function OnboardingScreen({ onDone }) {
             <button
               type="button"
               className="btn-primary btn-primary-block"
-              onClick={() => setStep(2)}
+              onClick={() => {
+                resetAuthMessages();
+                setStep(2);
+              }}
             >
               Los geht's
             </button>
           </>
         )}
 
-        {step === 2 && (
-          <>
-            <h1 className="onboarding-title">Deine E-Mail-Adresse</h1>
+        {step === 2 && authMode === "register" && (
+          <form onSubmit={handleRegister}>
+            <h1 className="onboarding-title">Konto erstellen</h1>
             <p className="onboarding-text">
-              Für spätere Erinnerungen. Nichts wird versendet.
+              Deine Daten liegen in deinem persönlichen Konto — überall
+              zugänglich, sobald du dich anmeldest.
             </p>
             <input
               type="email"
               className="onboarding-input"
               placeholder="max@example.com"
               value={email}
-              onChange={(e) => {
-                setEmail(e.target.value);
-                setEmailError(null);
-              }}
-              onKeyDown={(e) => e.key === "Enter" && advanceFromEmail()}
+              onChange={(e) => setEmail(e.target.value)}
+              autoComplete="email"
               autoFocus
             />
-            {emailError && (
-              <div className="onboarding-error">{emailError}</div>
-            )}
+            <input
+              type="password"
+              className="onboarding-input"
+              placeholder="Passwort (min. 8 Zeichen)"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="new-password"
+            />
+            {error && <div className="onboarding-error">{error}</div>}
+            <button
+              type="submit"
+              className="btn-primary btn-primary-block"
+              disabled={loading}
+            >
+              {loading ? "Erstelle Konto…" : "Konto erstellen"}
+            </button>
+            <div className="auth-links">
+              <button
+                type="button"
+                className="auth-link"
+                onClick={() => {
+                  resetAuthMessages();
+                  setAuthMode("login");
+                }}
+              >
+                Schon ein Konto? Anmelden
+              </button>
+            </div>
+          </form>
+        )}
+
+        {step === 2 && authMode === "login" && (
+          <form onSubmit={handleLogin}>
+            <h1 className="onboarding-title">Willkommen zurück</h1>
+            <p className="onboarding-text">
+              Melde dich mit E-Mail und Passwort an.
+            </p>
+            <input
+              type="email"
+              className="onboarding-input"
+              placeholder="max@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              autoComplete="email"
+              autoFocus
+            />
+            <input
+              type="password"
+              className="onboarding-input"
+              placeholder="Passwort"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
+            />
+            {error && <div className="onboarding-error">{error}</div>}
+            <button
+              type="submit"
+              className="btn-primary btn-primary-block"
+              disabled={loading}
+            >
+              {loading ? "Melde an…" : "Anmelden"}
+            </button>
+            <div className="auth-links">
+              <button
+                type="button"
+                className="auth-link"
+                onClick={() => {
+                  resetAuthMessages();
+                  setAuthMode("forgot");
+                }}
+              >
+                Passwort vergessen?
+              </button>
+              <button
+                type="button"
+                className="auth-link"
+                onClick={() => {
+                  resetAuthMessages();
+                  setAuthMode("register");
+                }}
+              >
+                Noch kein Konto? Registrieren
+              </button>
+            </div>
+          </form>
+        )}
+
+        {step === 2 && authMode === "forgot" && (
+          <form onSubmit={handleForgot}>
+            <h1 className="onboarding-title">Passwort zurücksetzen</h1>
+            <p className="onboarding-text">
+              Wir schicken dir einen Link zum Ändern deines Passworts.
+            </p>
+            <input
+              type="email"
+              className="onboarding-input"
+              placeholder="max@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              autoComplete="email"
+              autoFocus
+            />
+            {error && <div className="onboarding-error">{error}</div>}
+            {info && <div className="onboarding-info">{info}</div>}
+            <button
+              type="submit"
+              className="btn-primary btn-primary-block"
+              disabled={loading || !!info}
+            >
+              {loading ? "Sende…" : "Link senden"}
+            </button>
+            <div className="auth-links">
+              <button
+                type="button"
+                className="auth-link"
+                onClick={() => {
+                  resetAuthMessages();
+                  setAuthMode("login");
+                }}
+              >
+                Zurück zum Login
+              </button>
+            </div>
+          </form>
+        )}
+
+        {step === 2 && authMode === "check-email" && (
+          <>
+            <h1 className="onboarding-title">Prüfe dein Postfach</h1>
+            <p className="onboarding-text">
+              Wir haben dir eine Bestätigungs-E-Mail an{" "}
+              <strong>{email}</strong> geschickt. Klicke den Link darin, um
+              dein Konto zu aktivieren — danach kannst du dich hier anmelden.
+            </p>
             <button
               type="button"
-              className="btn-primary btn-primary-block"
-              onClick={advanceFromEmail}
+              className="btn-secondary btn-primary-block"
+              onClick={() => {
+                resetAuthMessages();
+                setAuthMode("login");
+              }}
             >
-              Weiter
+              Zurück zum Login
             </button>
           </>
         )}
@@ -3700,16 +3617,6 @@ function OnboardingScreen({ onDone }) {
               </button>
             </div>
           </>
-        )}
-
-        {step < 3 && (
-          <button
-            type="button"
-            className="onboarding-skip"
-            onClick={skipOnboarding}
-          >
-            Später einrichten
-          </button>
         )}
       </div>
     </div>
@@ -7154,8 +7061,27 @@ export default function App() {
     return <AuthConfigMissingScreen />;
   }
 
-  if (!session) {
-    return <AuthScreen />;
+  // Disclaimer gates everything on fresh install
+  if (disclaimerOpen) {
+    return (
+      <div className="app">
+        <DisclaimerModal onAcknowledge={acknowledgeDisclaimer} />
+      </div>
+    );
+  }
+
+  // Onboarding covers ALL not-yet-in-the-app cases:
+  //   - Fresh visitor: full 3-step flow (welcome → auth → ready)
+  //   - Returning user after logout: same component, jump to step 2 (auth)
+  //   - Signed in but didn't finish orientation: jump to step 3 (ready)
+  if (!session || !onboardingDone) {
+    return (
+      <OnboardingScreen
+        session={session}
+        skipWelcome={onboardingDone}
+        onDone={completeOnboarding}
+      />
+    );
   }
 
   if (!dataReady) {
