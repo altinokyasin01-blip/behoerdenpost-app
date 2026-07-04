@@ -904,6 +904,10 @@ const TEMPLATE_TYPES = [
 const USER_NAME_KEY = "buero_user_name";
 const TIPS_SEEN_KEY = "buero_tips_seen";
 const INSTALL_DISMISSED_KEY = "buero_install_dismissed";
+const BROWSER_TIP_SEEN_KEY = "buero_browser_tip_seen";
+
+const BROWSER_TIP_TEXT =
+  "Einige Funktionen wie der lokale Datei-Zugriff sind nur in Chrome und Edge verfügbar. Alle anderen Funktionen laufen in jedem Browser.";
 
 (function migrateTipsSeen() {
   if (typeof localStorage === "undefined") return;
@@ -3129,11 +3133,22 @@ function OnboardingScreen({ onDone }) {
 
         {step === 3 && (
           <>
-            <h1 className="onboarding-title">Und jetzt?</h1>
+            <h1 className="onboarding-title">Büro ist bereit</h1>
             <p className="onboarding-text">
-              Der schnellste Einstieg: einen Brief scannen. Claude liest ihn,
-              erkennt Frist und Betrag und schlägt vor, was du damit tun kannst.
+              Laden Sie Ihre ersten Dokumente, Briefe oder Rechnungen über den
+              Scan-Tab hoch — Büro erkennt automatisch was wichtig ist und
+              behält den Überblick für Sie.
             </p>
+            <div className="onboarding-examples">
+              <div className="onboarding-examples-label">
+                Was Sie hochladen können
+              </div>
+              <ul className="onboarding-examples-list">
+                <li>Behördenbriefe &amp; Mahnungen</li>
+                <li>Rechnungen &amp; Zahlungsaufforderungen</li>
+                <li>Verträge &amp; wichtige Schreiben</li>
+              </ul>
+            </div>
             <div className="onboarding-actions">
               <button
                 type="button"
@@ -4578,26 +4593,49 @@ function ScanView({ docs, isFirstScan, onScanned, onOpenDoc }) {
 
       {error && <div className="alert">Fehler: {error}</div>}
 
-      <h2 className="section-title">Scan-Verlauf</h2>
-      <div className="doc-list">
-        {docs.length === 0 && <div className="empty">Noch keine Scans.</div>}
-        {docs.map((d) => (
+      {docs.length === 0 ? (
+        <div className="card scan-empty">
+          <div className="scan-empty-title">
+            Ihr erstes Dokument wartet darauf erkannt zu werden.
+          </div>
+          <div className="scan-empty-sub">Büro erkennt zuverlässig:</div>
+          <ul className="scan-empty-list">
+            <li>Behördenbriefe &amp; Mahnungen</li>
+            <li>Rechnungen &amp; Zahlungsaufforderungen</li>
+            <li>Verträge &amp; wichtige Schreiben</li>
+          </ul>
           <button
-            key={d.id}
             type="button"
-            className="card doc-card"
-            onClick={() => onOpenDoc(d.id)}
+            className="btn-primary btn-primary-block"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading || analyzingQr}
           >
-            <div className="doc-body">
-              <div className="doc-title">{d.title}</div>
-              <div className="doc-meta">
-                {d.sender} · {formatDate(d.date)}
-              </div>
-            </div>
-            <StatusBadge status={d.status} />
+            Jetzt scannen
           </button>
-        ))}
-      </div>
+        </div>
+      ) : (
+        <>
+          <h2 className="section-title">Scan-Verlauf</h2>
+          <div className="doc-list">
+            {docs.map((d) => (
+              <button
+                key={d.id}
+                type="button"
+                className="card doc-card"
+                onClick={() => onOpenDoc(d.id)}
+              >
+                <div className="doc-body">
+                  <div className="doc-title">{d.title}</div>
+                  <div className="doc-meta">
+                    {d.sender} · {formatDate(d.date)}
+                  </div>
+                </div>
+                <StatusBadge status={d.status} />
+              </button>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -5345,6 +5383,22 @@ export default function App() {
       return false;
     }
   });
+  const [browserTipSeen, setBrowserTipSeen] = useState(() => {
+    try {
+      return localStorage.getItem(BROWSER_TIP_SEEN_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+
+  function dismissBrowserTip() {
+    try {
+      localStorage.setItem(BROWSER_TIP_SEEN_KEY, "1");
+    } catch {
+      // ignore
+    }
+    setBrowserTipSeen(true);
+  }
 
   const googleConnected =
     !!googleToken && googleToken.expiresAt > Date.now();
@@ -6331,6 +6385,9 @@ export default function App() {
         <IconSearch size={20} />
       </button>
       <main className="main">
+        {!FS_SUPPORTED && !browserTipSeen && (
+          <TabTip text={BROWSER_TIP_TEXT} onDismiss={dismissBrowserTip} />
+        )}
         {TAB_TIPS[tab] &&
           !tooltipsSeen.has(tab) &&
           !(tab === "scan" && !tooltipsSeen.has("first_scan_done")) && (

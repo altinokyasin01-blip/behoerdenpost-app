@@ -1371,6 +1371,71 @@ input {
   gap: 10px;
 }
 
+.onboarding-examples {
+  margin: 0 0 20px;
+  padding: 14px 16px;
+  background: var(--surface-hover);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.onboarding-examples-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.onboarding-examples-list {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--text-soft);
+  font-size: 13.5px;
+  line-height: 1.7;
+}
+
+.scan-empty {
+  padding: 28px 22px;
+  text-align: center;
+  margin-top: 24px;
+}
+
+.scan-empty-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 16px;
+  line-height: 1.4;
+}
+
+.scan-empty-sub {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.scan-empty-list {
+  margin: 0 auto 20px;
+  padding: 0;
+  list-style: none;
+  color: var(--text-soft);
+  font-size: 13.5px;
+  line-height: 1.9;
+  display: inline-block;
+  text-align: left;
+}
+
+.scan-empty-list li::before {
+  content: "•";
+  color: var(--text-muted);
+  margin-right: 8px;
+}
+
 .onboarding-skip {
   display: block;
   margin: 14px auto 0;
