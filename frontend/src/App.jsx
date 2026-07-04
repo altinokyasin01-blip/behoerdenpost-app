@@ -1,5 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import API_BASE from "./config.js";
+import {
+  supabase,
+  SUPABASE_CONFIGURED,
+  fetchAll,
+  syncDiff,
+  bulkInsert,
+} from "./supabase.js";
 import "./App.css";
 
 const TODAY = new Date("2026-07-02T00:00:00");
@@ -3219,6 +3226,345 @@ function DisclaimerModal({ onAcknowledge }) {
   );
 }
 
+function AuthScreen() {
+  const [mode, setMode] = useState("welcome");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState(null);
+  const [info, setInfo] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  function reset() {
+    setError(null);
+    setInfo(null);
+  }
+
+  async function handleLogin(e) {
+    e.preventDefault();
+    reset();
+    if (!isValidEmail(email)) {
+      setError("Bitte gib eine gültige E-Mail-Adresse ein.");
+      return;
+    }
+    if (!password) {
+      setError("Bitte gib dein Passwort ein.");
+      return;
+    }
+    setLoading(true);
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+    setLoading(false);
+    if (error) setError(error.message);
+    // onAuthStateChange in App picks up the session automatically
+  }
+
+  async function handleRegister(e) {
+    e.preventDefault();
+    reset();
+    if (!isValidEmail(email)) {
+      setError("Bitte gib eine gültige E-Mail-Adresse ein.");
+      return;
+    }
+    if (password.length < 8) {
+      setError("Passwort muss mindestens 8 Zeichen lang sein.");
+      return;
+    }
+    setLoading(true);
+    const { data, error } = await supabase.auth.signUp({ email, password });
+    setLoading(false);
+    if (error) {
+      setError(error.message);
+      return;
+    }
+    if (data.session) {
+      // Auto-confirmation on — App reacts via onAuthStateChange
+    } else {
+      setMode("check-email");
+    }
+  }
+
+  async function handleForgot(e) {
+    e.preventDefault();
+    reset();
+    if (!isValidEmail(email)) {
+      setError("Bitte gib eine gültige E-Mail-Adresse ein.");
+      return;
+    }
+    setLoading(true);
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin,
+    });
+    setLoading(false);
+    if (error) {
+      setError(error.message);
+      return;
+    }
+    setInfo("Falls die Adresse bekannt ist, haben wir dir einen Reset-Link geschickt.");
+  }
+
+  return (
+    <div className="onboarding">
+      <div className="onboarding-card">
+        {mode === "welcome" && (
+          <>
+            <div className="onboarding-logo">B</div>
+            <h1 className="onboarding-title">Willkommen bei Büro</h1>
+            <p className="onboarding-text">
+              Dein persönlicher Assistent für alles was verwaltet werden will —
+              Post scannen, Fristen im Blick, Kontakte an einem Ort.
+            </p>
+            <div className="onboarding-actions">
+              <button
+                type="button"
+                className="btn-primary btn-primary-block"
+                onClick={() => {
+                  reset();
+                  setMode("register");
+                }}
+              >
+                Konto erstellen
+              </button>
+              <button
+                type="button"
+                className="btn-secondary btn-primary-block"
+                onClick={() => {
+                  reset();
+                  setMode("login");
+                }}
+              >
+                Anmelden
+              </button>
+            </div>
+          </>
+        )}
+
+        {mode === "login" && (
+          <form onSubmit={handleLogin}>
+            <h1 className="onboarding-title">Willkommen zurück</h1>
+            <p className="onboarding-text">Melde dich mit E-Mail und Passwort an.</p>
+            <input
+              type="email"
+              className="onboarding-input"
+              placeholder="max@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              autoComplete="email"
+              autoFocus
+            />
+            <input
+              type="password"
+              className="onboarding-input"
+              placeholder="Passwort"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
+            />
+            {error && <div className="onboarding-error">{error}</div>}
+            <button
+              type="submit"
+              className="btn-primary btn-primary-block"
+              disabled={loading}
+            >
+              {loading ? "Melde an…" : "Anmelden"}
+            </button>
+            <div className="auth-links">
+              <button
+                type="button"
+                className="auth-link"
+                onClick={() => {
+                  reset();
+                  setMode("forgot");
+                }}
+              >
+                Passwort vergessen?
+              </button>
+              <button
+                type="button"
+                className="auth-link"
+                onClick={() => {
+                  reset();
+                  setMode("register");
+                }}
+              >
+                Noch kein Konto?
+              </button>
+            </div>
+          </form>
+        )}
+
+        {mode === "register" && (
+          <form onSubmit={handleRegister}>
+            <h1 className="onboarding-title">Konto erstellen</h1>
+            <p className="onboarding-text">
+              Deine Daten liegen in deinem persönlichen Konto — überall
+              zugänglich, sobald du dich anmeldest.
+            </p>
+            <input
+              type="email"
+              className="onboarding-input"
+              placeholder="max@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              autoComplete="email"
+              autoFocus
+            />
+            <input
+              type="password"
+              className="onboarding-input"
+              placeholder="Passwort (min. 8 Zeichen)"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="new-password"
+            />
+            {error && <div className="onboarding-error">{error}</div>}
+            <button
+              type="submit"
+              className="btn-primary btn-primary-block"
+              disabled={loading}
+            >
+              {loading ? "Erstelle Konto…" : "Konto erstellen"}
+            </button>
+            <div className="auth-links">
+              <button
+                type="button"
+                className="auth-link"
+                onClick={() => {
+                  reset();
+                  setMode("login");
+                }}
+              >
+                Schon ein Konto? Anmelden
+              </button>
+            </div>
+          </form>
+        )}
+
+        {mode === "forgot" && (
+          <form onSubmit={handleForgot}>
+            <h1 className="onboarding-title">Passwort zurücksetzen</h1>
+            <p className="onboarding-text">
+              Wir schicken dir einen Link zum Ändern deines Passworts.
+            </p>
+            <input
+              type="email"
+              className="onboarding-input"
+              placeholder="max@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              autoComplete="email"
+              autoFocus
+            />
+            {error && <div className="onboarding-error">{error}</div>}
+            {info && <div className="onboarding-info">{info}</div>}
+            <button
+              type="submit"
+              className="btn-primary btn-primary-block"
+              disabled={loading || !!info}
+            >
+              {loading ? "Sende…" : "Link senden"}
+            </button>
+            <div className="auth-links">
+              <button
+                type="button"
+                className="auth-link"
+                onClick={() => {
+                  reset();
+                  setMode("login");
+                }}
+              >
+                Zurück zum Login
+              </button>
+            </div>
+          </form>
+        )}
+
+        {mode === "check-email" && (
+          <>
+            <h1 className="onboarding-title">Prüfe dein Postfach</h1>
+            <p className="onboarding-text">
+              Wir haben dir eine Bestätigungs-E-Mail an{" "}
+              <strong>{email}</strong> geschickt. Klicke den Link darin, um
+              dein Konto zu aktivieren.
+            </p>
+            <button
+              type="button"
+              className="btn-secondary btn-primary-block"
+              onClick={() => {
+                reset();
+                setMode("login");
+              }}
+            >
+              Zurück zum Login
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function AuthConfigMissingScreen() {
+  return (
+    <div className="onboarding">
+      <div className="onboarding-card">
+        <div className="onboarding-logo">B</div>
+        <h1 className="onboarding-title">Auth nicht konfiguriert</h1>
+        <p className="onboarding-text">
+          Die Datei <code>frontend/.env</code> braucht{" "}
+          <code>VITE_SUPABASE_URL</code> und{" "}
+          <code>VITE_SUPABASE_ANON_KEY</code>. Starte den Dev-Server nach dem
+          Setzen der Variablen neu.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function MigrationPromptModal({ counts, onConfirm, onSkip, busy }) {
+  return (
+    <Modal onClose={busy ? undefined : onSkip} dismissable={!busy}>
+      <div className="detail">
+        <div className="detail-head">
+          <div className="detail-title">Lokale Daten übernehmen?</div>
+        </div>
+        <p className="detail-text">
+          Auf diesem Gerät finden wir noch Einträge aus der Zeit vor der
+          Anmeldung. Sollen wir sie in dein Konto übertragen?
+        </p>
+        <ul className="migration-list">
+          {counts.docs > 0 && <li>{counts.docs} Dokument{counts.docs === 1 ? "" : "e"}</li>}
+          {counts.contacts > 0 && <li>{counts.contacts} Kontakt{counts.contacts === 1 ? "" : "e"}</li>}
+          {counts.reminders > 0 && <li>{counts.reminders} Erinnerung{counts.reminders === 1 ? "" : "en"}</li>}
+          {counts.events > 0 && <li>{counts.events} Termin{counts.events === 1 ? "" : "e"}</li>}
+        </ul>
+        <p className="detail-muted">
+          Nach der Übertragung werden die lokalen Kopien gelöscht.
+        </p>
+        <div className="detail-actions detail-actions-row">
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={onSkip}
+            disabled={busy}
+          >
+            Überspringen
+          </button>
+          <button
+            type="button"
+            className="btn-primary btn-primary-block"
+            onClick={onConfirm}
+            disabled={busy}
+          >
+            {busy ? "Übertrage…" : "Ins Konto übertragen"}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 function OnboardingScreen({ onDone }) {
   const [step, setStep] = useState(1);
   const [email, setEmail] = useState(() => {
@@ -3378,6 +3724,7 @@ function Sidebar({
   badges = {},
   themeChoice,
   onCycleTheme,
+  onSignOut,
 }) {
   const ThemeIcon = THEME_ICON[themeChoice] || IconMonitor;
   return (
@@ -3429,6 +3776,15 @@ function Sidebar({
         <ThemeIcon size={16} />
         <span>{THEME_LABEL[themeChoice]}</span>
       </button>
+      {onSignOut && (
+        <button
+          type="button"
+          className="sidebar-signout"
+          onClick={onSignOut}
+        >
+          Abmelden
+        </button>
+      )}
     </aside>
   );
 }
@@ -5562,10 +5918,19 @@ function loadTooltipsSeen() {
 
 export default function App() {
   const [tab, setTab] = useState("home");
-  const [docs, setDocs] = useState(loadDocs);
-  const [contacts, setContacts] = useState(loadContacts);
-  const [reminders, setReminders] = useState(loadReminders);
-  const [events, setEvents] = useState(loadEvents);
+  const [session, setSession] = useState(null);
+  const [authReady, setAuthReady] = useState(false);
+  const [dataReady, setDataReady] = useState(false);
+  const [migrationPrompt, setMigrationPrompt] = useState(null);
+  const [migrationBusy, setMigrationBusy] = useState(false);
+  const [docs, setDocs] = useState([]);
+  const [contacts, setContacts] = useState([]);
+  const [reminders, setReminders] = useState([]);
+  const [events, setEvents] = useState([]);
+  const docsPrevRef = useRef([]);
+  const contactsPrevRef = useRef([]);
+  const remindersPrevRef = useRef([]);
+  const eventsPrevRef = useRef([]);
   const [pendingResult, setPendingResult] = useState(null);
   const [categoryFilter, setCategoryFilter] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
@@ -5657,37 +6022,35 @@ export default function App() {
   const [onboardingDone, setOnboardingDone] = useState(loadOnboardingDone);
   const [userEmail, setUserEmail] = useState(loadUserEmail);
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(docs));
-    } catch {
-      // storage full / private mode — ignore
-    }
-  }, [docs]);
+  const userId = session?.user?.id || null;
 
   useEffect(() => {
-    try {
-      localStorage.setItem(CONTACTS_KEY, JSON.stringify(contacts));
-    } catch {
-      // ignore
-    }
-  }, [contacts]);
+    if (!userId || !dataReady) return;
+    const prev = docsPrevRef.current;
+    docsPrevRef.current = docs;
+    syncDiff("documents", prev, docs, userId);
+  }, [docs, userId, dataReady]);
 
   useEffect(() => {
-    try {
-      localStorage.setItem(REMINDERS_KEY, JSON.stringify(reminders));
-    } catch {
-      // ignore
-    }
-  }, [reminders]);
+    if (!userId || !dataReady) return;
+    const prev = contactsPrevRef.current;
+    contactsPrevRef.current = contacts;
+    syncDiff("contacts", prev, contacts, userId);
+  }, [contacts, userId, dataReady]);
 
   useEffect(() => {
-    try {
-      localStorage.setItem(EVENTS_KEY, JSON.stringify(events));
-    } catch {
-      // ignore
-    }
-  }, [events]);
+    if (!userId || !dataReady) return;
+    const prev = remindersPrevRef.current;
+    remindersPrevRef.current = reminders;
+    syncDiff("reminders", prev, reminders, userId);
+  }, [reminders, userId, dataReady]);
+
+  useEffect(() => {
+    if (!userId || !dataReady) return;
+    const prev = eventsPrevRef.current;
+    eventsPrevRef.current = events;
+    syncDiff("events", prev, events, userId);
+  }, [events, userId, dataReady]);
 
   useEffect(() => {
     try {
@@ -5727,6 +6090,124 @@ export default function App() {
       }
     }
   }, [fileIndex]);
+
+  useEffect(() => {
+    if (!SUPABASE_CONFIGURED) {
+      setAuthReady(true);
+      return;
+    }
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session);
+      setAuthReady(true);
+    });
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => {
+      setSession(s);
+      if (!s) {
+        setDataReady(false);
+        setDocs([]);
+        setContacts([]);
+        setReminders([]);
+        setEvents([]);
+        docsPrevRef.current = [];
+        contactsPrevRef.current = [];
+        remindersPrevRef.current = [];
+        eventsPrevRef.current = [];
+      }
+    });
+    return () => sub?.subscription?.unsubscribe?.();
+  }, []);
+
+  useEffect(() => {
+    if (!userId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await fetchAll(userId);
+        if (cancelled) return;
+        docsPrevRef.current = data.docs;
+        contactsPrevRef.current = data.contacts;
+        remindersPrevRef.current = data.reminders;
+        eventsPrevRef.current = data.events;
+        setDocs(data.docs);
+        setContacts(data.contacts);
+        setReminders(data.reminders);
+        setEvents(data.events);
+        setDataReady(true);
+
+        // Check for legacy localStorage data to migrate
+        const legacy = {
+          docs: loadDocs(),
+          contacts: loadContacts(),
+          reminders: loadReminders(),
+          events: loadEvents(),
+        };
+        const total =
+          legacy.docs.length +
+          legacy.contacts.length +
+          legacy.reminders.length +
+          legacy.events.length;
+        if (total > 0) {
+          setMigrationPrompt({
+            legacy,
+            counts: {
+              docs: legacy.docs.length,
+              contacts: legacy.contacts.length,
+              reminders: legacy.reminders.length,
+              events: legacy.events.length,
+            },
+          });
+        }
+      } catch (e) {
+        console.error("Initial data load failed:", e);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
+
+  async function migrateLegacyData() {
+    if (!migrationPrompt || !userId) return;
+    setMigrationBusy(true);
+    const { legacy } = migrationPrompt;
+    try {
+      await bulkInsert("documents", legacy.docs, userId);
+      await bulkInsert("contacts", legacy.contacts, userId);
+      await bulkInsert("reminders", legacy.reminders, userId);
+      await bulkInsert("events", legacy.events, userId);
+      // Merge into current state
+      docsPrevRef.current = [...legacy.docs, ...docs];
+      contactsPrevRef.current = [...legacy.contacts, ...contacts];
+      remindersPrevRef.current = [...legacy.reminders, ...reminders];
+      eventsPrevRef.current = [...legacy.events, ...events];
+      setDocs((prev) => [...legacy.docs, ...prev]);
+      setContacts((prev) => [...legacy.contacts, ...prev]);
+      setReminders((prev) => [...legacy.reminders, ...prev]);
+      setEvents((prev) => [...legacy.events, ...prev]);
+      clearLegacyLocalStorage();
+      setMigrationPrompt(null);
+    } catch (e) {
+      alert("Übertragung fehlgeschlagen: " + e.message);
+    } finally {
+      setMigrationBusy(false);
+    }
+  }
+
+  function skipMigration() {
+    clearLegacyLocalStorage();
+    setMigrationPrompt(null);
+  }
+
+  function clearLegacyLocalStorage() {
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(CONTACTS_KEY);
+      localStorage.removeItem(REMINDERS_KEY);
+      localStorage.removeItem(EVENTS_KEY);
+    } catch {
+      // ignore
+    }
+  }
 
   useEffect(() => {
     if (!onboardingDone) return;
@@ -6016,7 +6497,7 @@ export default function App() {
     setTimeout(() => URL.revokeObjectURL(url), 5000);
   }
 
-  function deleteAllData() {
+  async function deleteAllData() {
     const first = confirm(
       "Wirklich ALLE Daten löschen? Dokumente, Kontakte, Erinnerungen, Termine und alle Einstellungen gehen verloren."
     );
@@ -6025,6 +6506,19 @@ export default function App() {
       "Ganz sicher? Das kann nicht rückgängig gemacht werden."
     );
     if (!second) return;
+    // Delete Supabase-side data first (RLS keeps this scoped to user)
+    if (userId) {
+      try {
+        await Promise.all([
+          supabase.from("documents").delete().eq("user_id", userId),
+          supabase.from("contacts").delete().eq("user_id", userId),
+          supabase.from("reminders").delete().eq("user_id", userId),
+          supabase.from("events").delete().eq("user_id", userId),
+        ]);
+      } catch (e) {
+        console.error("Cloud delete failed:", e);
+      }
+    }
     try {
       localStorage.clear();
     } catch {
@@ -6034,6 +6528,11 @@ export default function App() {
       if (typeof indexedDB !== "undefined") {
         indexedDB.deleteDatabase(IDB_NAME);
       }
+    } catch {
+      // ignore
+    }
+    try {
+      if (session) await supabase.auth.signOut();
     } catch {
       // ignore
     }
@@ -6635,17 +7134,32 @@ export default function App() {
     setTab(landing === "scan" ? "scan" : "home");
   }
 
-  if (!onboardingDone) {
-    return (
-      <div className="app">
-        {!disclaimerOpen && (
-          <OnboardingScreen onDone={completeOnboarding} />
-        )}
-        {disclaimerOpen && (
-          <DisclaimerModal onAcknowledge={acknowledgeDisclaimer} />
-        )}
-      </div>
-    );
+  async function signOut() {
+    if (!confirm("Wirklich abmelden?")) return;
+    try {
+      await supabase.auth.signOut();
+    } catch (e) {
+      alert("Abmelden fehlgeschlagen: " + e.message);
+    }
+  }
+
+  // Derive email from session (Supabase is now the source of truth)
+  const authEmail = session?.user?.email || userEmail;
+
+  if (!authReady) {
+    return null;
+  }
+
+  if (!SUPABASE_CONFIGURED) {
+    return <AuthConfigMissingScreen />;
+  }
+
+  if (!session) {
+    return <AuthScreen />;
+  }
+
+  if (!dataReady) {
+    return null;
   }
 
   const hasStaleFolders = fileIndex.folders.some((f) => {
@@ -6659,11 +7173,12 @@ export default function App() {
       <Sidebar
         active={tab}
         onChange={navigate}
-        userEmail={userEmail}
+        userEmail={authEmail}
         onOpenSearch={() => setSearchOpen(true)}
         badges={navBadges}
         themeChoice={themeChoice}
         onCycleTheme={cycleTheme}
+        onSignOut={signOut}
       />
       <button
         type="button"
@@ -6970,6 +7485,15 @@ export default function App() {
 
       {disclaimerOpen && (
         <DisclaimerModal onAcknowledge={acknowledgeDisclaimer} />
+      )}
+
+      {migrationPrompt && (
+        <MigrationPromptModal
+          counts={migrationPrompt.counts}
+          busy={migrationBusy}
+          onConfirm={migrateLegacyData}
+          onSkip={skipMigration}
+        />
       )}
 
       {installPromptEvent && !installDismissed && (
