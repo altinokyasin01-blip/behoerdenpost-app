@@ -297,6 +297,160 @@ function bueroItemToGoogleEvent(item, kind) {
   };
 }
 
+const ICS_KIND_LABEL = {
+  deadline: "Frist",
+  reminder: "Erinnerung",
+  event: "Termin",
+};
+
+function icsEscape(s) {
+  if (s == null) return "";
+  return String(s)
+    .replace(/\\/g, "\\\\")
+    .replace(/;/g, "\\;")
+    .replace(/,/g, "\\,")
+    .replace(/\r?\n/g, "\\n");
+}
+
+function icsFoldLine(line) {
+  if (line.length <= 74) return line;
+  const parts = [];
+  let i = 0;
+  while (i < line.length) {
+    const chunkLen = parts.length === 0 ? 74 : 73;
+    parts.push(line.slice(i, i + chunkLen));
+    i += chunkLen;
+  }
+  return parts.join("\r\n ");
+}
+
+function icsDate(iso) {
+  return iso.replace(/-/g, "");
+}
+
+function icsDateTime(iso, time) {
+  const [h, m] = time.split(":").map(Number);
+  return `${icsDate(iso)}T${String(h).padStart(2, "0")}${String(m).padStart(2, "0")}00`;
+}
+
+function icsAddDay(iso) {
+  const d = new Date(iso + "T00:00:00");
+  d.setDate(d.getDate() + 1);
+  return isoLocal(d);
+}
+
+function icsAddHour(iso, time) {
+  const [h, m] = time.split(":").map(Number);
+  const endH = (h + 1) % 24;
+  return `${icsDate(iso)}T${String(endH).padStart(2, "0")}${String(m).padStart(2, "0")}00`;
+}
+
+function icsNowStamp() {
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}T${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}${pad(d.getUTCSeconds())}Z`;
+}
+
+function icsEventLines(entry) {
+  const kindLabel = ICS_KIND_LABEL[entry.kind] || "Eintrag";
+  const summary = `${kindLabel}: ${entry.title}`;
+  const uid = `${entry.uid || entry.id}@meinbuero.app`;
+  const description = [
+    entry.notes,
+    `Typ: ${kindLabel}`,
+    "Erstellt von Büro",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+
+  const lines = [
+    "BEGIN:VEVENT",
+    `UID:${uid}`,
+    `DTSTAMP:${icsNowStamp()}`,
+  ];
+
+  if (entry.kind === "event" && entry.time) {
+    lines.push(`DTSTART:${icsDateTime(entry.date, entry.time)}`);
+    lines.push(`DTEND:${icsAddHour(entry.date, entry.time)}`);
+  } else {
+    lines.push(`DTSTART;VALUE=DATE:${icsDate(entry.date)}`);
+    lines.push(`DTEND;VALUE=DATE:${icsDate(icsAddDay(entry.date))}`);
+  }
+
+  lines.push(`SUMMARY:${icsEscape(summary)}`);
+  if (description) lines.push(`DESCRIPTION:${icsEscape(description)}`);
+  lines.push("URL:https://meinbuero.app");
+  lines.push("END:VEVENT");
+
+  return lines;
+}
+
+function generateICS(entries) {
+  const lines = [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//Büro//Büro App//DE",
+    "CALSCALE:GREGORIAN",
+    "METHOD:PUBLISH",
+  ];
+  for (const e of entries) {
+    lines.push(...icsEventLines(e));
+  }
+  lines.push("END:VCALENDAR");
+  return lines.map(icsFoldLine).join("\r\n") + "\r\n";
+}
+
+function downloadICS(filename, entries) {
+  const ics = generateICS(entries);
+  const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
+function docToIcsEntry(doc) {
+  return {
+    kind: "deadline",
+    id: doc.id,
+    title: doc.title,
+    date: doc.deadline,
+    notes: [
+      doc.sender && `Absender: ${doc.sender}`,
+      doc.amount != null &&
+        `Betrag: ${doc.amount.toLocaleString("de-DE", { style: "currency", currency: "EUR" })}`,
+      doc.summary,
+    ]
+      .filter(Boolean)
+      .join("\n\n"),
+  };
+}
+
+function reminderToIcsEntry(reminder) {
+  return {
+    kind: "reminder",
+    id: reminder.id,
+    title: reminder.title,
+    date: reminder.date,
+    notes: reminder.notes,
+  };
+}
+
+function eventToIcsEntry(event) {
+  return {
+    kind: "event",
+    id: event.id,
+    title: event.title,
+    date: event.date,
+    time: event.time,
+    notes: event.notes,
+  };
+}
+
 function loadGoogleToken() {
   try {
     const raw = localStorage.getItem(GOOGLE_TOKEN_KEY);
@@ -939,7 +1093,7 @@ const LEGAL_TEXTS = {
           <strong>Angaben gemäß § 5 TMG</strong>
         </p>
         <p>
-          [DEIN NAME]
+          Yasin Altinok
           <br />
           [DEINE ADRESSE]
           <br />
@@ -948,12 +1102,12 @@ const LEGAL_TEXTS = {
         <p>
           <strong>Kontakt</strong>
           <br />
-          E-Mail: [DEINE EMAIL]
+          E-Mail: kontakt@meinbuero.app
         </p>
         <p>
           <strong>Verantwortlich für den Inhalt nach § 55 Abs. 2 RStV</strong>
           <br />
-          [DEIN NAME]
+          Yasin Altinok
         </p>
         <p className="detail-muted">
           Ersetze die Platzhalter in eckigen Klammern durch deine echten
@@ -1168,6 +1322,7 @@ function DocumentModal({
   onToggleStatus,
   onEditDeadline,
   onDelete,
+  onExportToCalendar,
 }) {
   const [copied, setCopied] = useState(false);
   const days = doc.deadline ? daysUntil(doc.deadline) : null;
@@ -1274,6 +1429,15 @@ function DocumentModal({
           >
             {isDone ? "Als offen markieren" : "Als erledigt markieren"}
           </button>
+          {doc.deadline && (
+            <button
+              type="button"
+              className="btn-secondary btn-primary-block"
+              onClick={onExportToCalendar}
+            >
+              Zu Kalender hinzufügen
+            </button>
+          )}
           <div className="detail-actions-row">
             <button
               type="button"
@@ -1888,6 +2052,7 @@ function ReminderDetailModal({
   onDelete,
   onToggleDone,
   onOpenDoc,
+  onExportToCalendar,
   onClose,
 }) {
   const days = daysUntil(reminder.date);
@@ -1959,6 +2124,14 @@ function ReminderDetailModal({
             </p>
           )}
         </section>
+
+        <button
+          type="button"
+          className="btn-secondary btn-primary-block"
+          onClick={onExportToCalendar}
+        >
+          Zu Kalender hinzufügen
+        </button>
 
         <div className="detail-actions detail-actions-row">
           <button type="button" className="btn-secondary" onClick={onDelete}>
@@ -2242,7 +2415,14 @@ function EventFormModal({
   );
 }
 
-function EventDetailModal({ event, contact, onEdit, onDelete, onClose }) {
+function EventDetailModal({
+  event,
+  contact,
+  onEdit,
+  onDelete,
+  onExportToCalendar,
+  onClose,
+}) {
   return (
     <Modal onClose={onClose}>
       <div className="detail">
@@ -2267,6 +2447,14 @@ function EventDetailModal({ event, contact, onEdit, onDelete, onClose }) {
             <p className="detail-text">{event.notes}</p>
           </section>
         )}
+
+        <button
+          type="button"
+          className="btn-secondary btn-primary-block"
+          onClick={onExportToCalendar}
+        >
+          Zu Kalender hinzufügen
+        </button>
 
         <div className="detail-actions detail-actions-row">
           <button type="button" className="btn-secondary" onClick={onDelete}>
@@ -3941,6 +4129,7 @@ function SettingsView({
   onGoogleDisconnect,
   onSetGoogleAutoExport,
   onSetGoogleShowCalendar,
+  onExportCalendar,
 }) {
   const [emailEditing, setEmailEditing] = useState(false);
   const [emailDraft, setEmailDraft] = useState(userEmail || "");
@@ -4225,6 +4414,57 @@ function SettingsView({
           Deine Google-Daten verlassen nie Büro ohne deine Erlaubnis. Alle
           Aufrufe laufen direkt aus dem Browser gegen die Google API — kein
           Server dazwischen.
+        </p>
+      </section>
+
+      {/* KALENDER-EXPORT (.ics) */}
+      <section className="settings-section">
+        <h2 className="settings-section-title">Kalender-Export</h2>
+        <div className="settings-group">
+          <button
+            type="button"
+            className="settings-row settings-row-link"
+            onClick={() => onExportCalendar("all")}
+          >
+            <div className="settings-row-body">
+              <div className="settings-row-label">Alle Einträge exportieren</div>
+              <div className="settings-row-sub">
+                Fristen, Erinnerungen und Termine als .ics-Datei.
+              </div>
+            </div>
+            <IconChevron />
+          </button>
+          <button
+            type="button"
+            className="settings-row settings-row-link"
+            onClick={() => onExportCalendar("deadlines")}
+          >
+            <div className="settings-row-body">
+              <div className="settings-row-label">Nur offene Fristen</div>
+              <div className="settings-row-sub">
+                Nur Doc-Fristen die noch nicht erledigt sind.
+              </div>
+            </div>
+            <IconChevron />
+          </button>
+          <button
+            type="button"
+            className="settings-row settings-row-link"
+            onClick={() => onExportCalendar("reminders")}
+          >
+            <div className="settings-row-body">
+              <div className="settings-row-label">Nur Erinnerungen</div>
+              <div className="settings-row-sub">
+                Alle offenen Erinnerungen als .ics-Datei.
+              </div>
+            </div>
+            <IconChevron />
+          </button>
+        </div>
+        <p className="settings-hint">
+          Funktioniert mit Apple Kalender, Google Kalender, Outlook und allen
+          anderen Kalender-Apps, die .ics-Dateien unterstützen. Auf iOS/macOS
+          öffnet sich beim Antippen der Datei direkt der Apple Kalender.
         </p>
       </section>
 
@@ -5654,6 +5894,55 @@ export default function App() {
     }
   }
 
+  function exportCalendarICS(scope) {
+    const entries = [];
+    if (scope === "all" || scope === "deadlines") {
+      for (const d of docs) {
+        if (d.deadline && d.status !== "Erledigt") {
+          entries.push(docToIcsEntry(d));
+        }
+      }
+    }
+    if (scope === "all" || scope === "reminders") {
+      for (const r of reminders) {
+        if (r.date && !r.done) {
+          entries.push(reminderToIcsEntry(r));
+        }
+      }
+    }
+    if (scope === "all") {
+      for (const e of events) {
+        if (e.date) entries.push(eventToIcsEntry(e));
+      }
+    }
+    if (entries.length === 0) {
+      alert("Keine passenden Einträge zum Exportieren.");
+      return;
+    }
+    const filename =
+      scope === "deadlines"
+        ? "buero-fristen.ics"
+        : scope === "reminders"
+        ? "buero-erinnerungen.ics"
+        : "buero-kalender.ics";
+    downloadICS(filename, entries);
+  }
+
+  function exportDocToICS(doc) {
+    if (!doc?.deadline) return;
+    downloadICS("buero-frist.ics", [docToIcsEntry(doc)]);
+  }
+
+  function exportReminderToICS(reminder) {
+    if (!reminder?.date) return;
+    downloadICS("buero-erinnerung.ics", [reminderToIcsEntry(reminder)]);
+  }
+
+  function exportEventToICS(event) {
+    if (!event?.date) return;
+    downloadICS("buero-termin.ics", [eventToIcsEntry(event)]);
+  }
+
   async function refreshGoogleEvents() {
     if (!googleConnected || !googleShowCalendar) {
       setGoogleEvents([]);
@@ -6484,6 +6773,7 @@ export default function App() {
             onGoogleDisconnect={disconnectGoogle}
             onSetGoogleAutoExport={setGoogleAutoExport}
             onSetGoogleShowCalendar={setGoogleShowCalendar}
+            onExportCalendar={exportCalendarICS}
           />
         )}
       </main>
@@ -6496,6 +6786,7 @@ export default function App() {
           onToggleStatus={() => toggleStatus(selectedDoc.id)}
           onEditDeadline={() => openDeadlineEdit(selectedDoc.id)}
           onDelete={() => deleteDoc(selectedDoc.id)}
+          onExportToCalendar={() => exportDocToICS(selectedDoc)}
         />
       )}
 
@@ -6532,6 +6823,7 @@ export default function App() {
             onEdit={openEditReminder}
             onDelete={deleteReminder}
             onToggleDone={toggleSelectedReminderDone}
+            onExportToCalendar={() => exportReminderToICS(r)}
             onOpenDoc={(id) => {
               setSelectedReminderId(null);
               setSelectedId(id);
@@ -6580,6 +6872,7 @@ export default function App() {
             onClose={() => setSelectedEventId(null)}
             onEdit={openEditEvent}
             onDelete={deleteEvent}
+            onExportToCalendar={() => exportEventToICS(e)}
           />
         );
       })()}
