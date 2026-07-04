@@ -902,7 +902,26 @@ const TEMPLATE_TYPES = [
 ];
 
 const USER_NAME_KEY = "buero_user_name";
-const TOOLTIPS_SEEN_KEY = "buero_tooltips_seen";
+const TIPS_SEEN_KEY = "buero_tips_seen";
+const INSTALL_DISMISSED_KEY = "buero_install_dismissed";
+
+(function migrateTipsSeen() {
+  if (typeof localStorage === "undefined") return;
+  try {
+    if (localStorage.getItem(TIPS_SEEN_KEY) !== null) return;
+    const oldRaw = localStorage.getItem("buero_tooltips_seen");
+    if (!oldRaw) return;
+    const parsed = JSON.parse(oldRaw);
+    if (!Array.isArray(parsed)) return;
+    const migrated = parsed.map((id) =>
+      typeof id === "string" && id.startsWith("tab_") ? id.slice(4) : id
+    );
+    localStorage.setItem(TIPS_SEEN_KEY, JSON.stringify(migrated));
+    localStorage.removeItem("buero_tooltips_seen");
+  } catch {
+    // ignore
+  }
+})();
 
 const APP_VERSION = "0.1.0";
 const SUPPORT_EMAIL = "support@buero.app";
@@ -916,27 +935,25 @@ const LEGAL_TEXTS = {
           <strong>Angaben gemäß § 5 TMG</strong>
         </p>
         <p>
-          [Name des Betreibers]
+          [DEIN NAME]
           <br />
-          [Straße Hausnr.]
-          <br />
-          [PLZ Ort]
+          [DEINE ADRESSE]
           <br />
           Deutschland
         </p>
         <p>
           <strong>Kontakt</strong>
           <br />
-          E-Mail: [kontakt@…]
+          E-Mail: [DEINE EMAIL]
         </p>
         <p>
           <strong>Verantwortlich für den Inhalt nach § 55 Abs. 2 RStV</strong>
           <br />
-          [Name]
+          [DEIN NAME]
         </p>
         <p className="detail-muted">
-          Diese Angaben sind Platzhalter — sie werden vor dem öffentlichen
-          Betrieb der App vollständig ausgefüllt.
+          Ersetze die Platzhalter in eckigen Klammern durch deine echten
+          Angaben, bevor Büro öffentlich verfügbar wird.
         </p>
       </>
     ),
@@ -955,27 +972,33 @@ const LEGAL_TEXTS = {
           Dokumente, Kontakte, Erinnerungen, Termine, App-Einstellungen und
           (wenn du Ordner freigibst) der extrahierte Text lokaler Dateien.
           Alles landet ausschließlich in localStorage und IndexedDB deines
-          Browsers.
+          Browsers — nicht bei uns, nicht auf fremden Servern.
         </p>
         <p>
-          <strong>Was an externe Dienste übermittelt wird</strong>
+          <strong>Was temporär an externe Dienste geht</strong>
           <br />
-          Beim Scannen wird das Dokument-Bild oder PDF an die Anthropic Claude
-          API zur Analyse geschickt. Bei Vorlagen, Widerspruch-Check und
-          QR-Analyse wird der jeweilige Textinhalt gesendet. Anthropic
-          behandelt diese Daten nach der eigenen Datenschutzerklärung
-          (anthropic.com/privacy).
+          Für die KI-Analyse werden Dokumente und Textinhalte kurzzeitig an
+          die Anthropic Claude API übertragen: beim Scannen das Bild/PDF, bei
+          Vorlagen/Widerspruch-Check/QR-Analyse der jeweilige Textinhalt.
+          Diese Übertragung ist für die Analyse notwendig; die Daten werden
+          von Anthropic gemäß deren Datenschutzerklärung
+          (anthropic.com/privacy) behandelt und laut Anbieter{" "}
+          <strong>nicht dauerhaft zu Trainingszwecken gespeichert</strong>.
+          Bei aktivierter Google-Calendar-Verknüpfung fließen die von dir
+          erstellten Fristen/Termine direkt aus deinem Browser zur Google
+          Calendar API — kein Backend-Umweg über uns.
         </p>
         <p>
           <strong>Was NICHT passiert</strong>
           <br />
           Kein Tracking, keine Analytics, keine Cookies. Keine Weitergabe an
-          Dritte. Kein Backend-Server, der deine Daten dauerhaft speichert.
+          Dritte über die genannten APIs hinaus. Kein eigener Server, der
+          deine Daten dauerhaft speichert.
         </p>
         <p>
           <strong>Deine Rechte nach DSGVO</strong>
           <br />
-          Auskunft: „Daten exportieren" gibt dir eine vollständige JSON-Kopie.
+          Auskunft: „Daten exportieren" liefert eine vollständige JSON-Kopie.
           Löschung: „Alle Daten löschen" wischt alles vom Gerät. Widerruf:
           einfach nicht mehr benutzen.
         </p>
@@ -1002,49 +1025,74 @@ const LEGAL_TEXTS = {
           <strong>2. Was Büro NICHT ist</strong>
           <br />
           Büro ersetzt keine juristische, steuerliche oder finanzielle
-          Beratung. Alle Analysen und Vorschläge sind unverbindliche Hinweise
-          — keine Rechts- oder Steuerauskunft.
+          Beratung. Alle Analysen und Vorschläge sind unverbindliche
+          Hinweise — keine Rechts- oder Steuerauskunft.
         </p>
         <p>
-          <strong>3. Haftung</strong>
+          <strong>3. Haftung für KI-generierte Inhalte</strong>
           <br />
-          Die Nutzung ist kostenlos. Wir übernehmen keine Gewähr für die
-          Richtigkeit oder Vollständigkeit der KI-Analysen. Für Entscheidungen
-          auf Basis der App-Ausgaben bist du selbst verantwortlich.
+          Alle Analysen, Zusammenfassungen, Vorlagen-Anschreiben,
+          Widerspruch-Einschätzungen und Aktions-Vorschläge werden durch ein
+          KI-Sprachmodell erzeugt. KI-Systeme können falsche Angaben liefern,
+          Fristen falsch lesen, Beträge verwechseln oder rechtliche
+          Einschätzungen abgeben, die im konkreten Fall unzutreffend sind.
+          Wir übernehmen <strong>keinerlei Gewähr</strong> für die
+          Richtigkeit, Vollständigkeit oder rechtliche Verbindlichkeit dieser
+          Ausgaben. Prüfe jede automatisch erzeugte Information selbst bevor
+          du danach handelst.
         </p>
         <p>
-          <strong>4. Bei wichtigen Vorgängen</strong>
+          <strong>4. Deine Verantwortung</strong>
           <br />
-          Bei rechtlich oder finanziell bedeutenden Angelegenheiten konsultiere
-          einen Anwalt, Steuerberater oder anderen Fachmann.
+          Für Entscheidungen auf Basis der App-Ausgaben bist du selbst
+          verantwortlich. Bei rechtlich oder finanziell bedeutenden
+          Angelegenheiten konsultiere einen Anwalt, Steuerberater oder
+          anderen Fachmann.
         </p>
         <p>
-          <strong>5. Datenschutz</strong>
+          <strong>5. Externe Dienste</strong>
+          <br />
+          Büro nutzt aktuell die Anthropic Claude API (für KI-Analysen) und
+          optional die Google Calendar API (für Kalender-Synchronisation).
+          Weitere Verknüpfungen — z.B. Apple Kalender, Outlook oder andere
+          Cloud-Dienste — können in zukünftigen Versionen ergänzt werden.
+          Ihre Nutzung ist jeweils optional und wird an der betreffenden
+          Stelle in der App explizit als solche gekennzeichnet.
+        </p>
+        <p>
+          <strong>6. Datenschutz</strong>
           <br />
           Siehe Datenschutzerklärung.
         </p>
         <p>
-          <strong>6. Änderungen</strong>
+          <strong>7. Änderungen</strong>
           <br />
           Diese Bedingungen können sich ändern. Aktuelle Fassung immer in der
           App einsehbar.
         </p>
-        <p className="detail-muted">Stand: {APP_VERSION}</p>
+        <p className="detail-muted">Stand: Version {APP_VERSION}</p>
       </>
     ),
   },
 };
 
 const TAB_TIPS = {
-  home: "Deine Kommandozentrale — Fristen, Ausgaben und Erinnerungen auf einen Blick. Klick auf eine Karte für Details.",
-  calendar: "Alle Termine, Fristen und Erinnerungen in einer Ansicht. Klick auf einen Tag zeigt die Einträge unten.",
-  scan: "Brief hochladen, Foto aufnehmen oder QR/Barcode scannen. Alles wird lokal analysiert.",
-  templates: "Häufige Anschreiben in Sekunden — Kündigung, Widerspruch, Datenschutzauskunft und mehr.",
+  home: "Deine Kommandozentrale — Fristen, Ausgaben und Erinnerungen auf einen Blick.",
+  calendar:
+    "Verbinde Google Calendar in den Einstellungen, um deine Termine automatisch zu synchronisieren.",
+  scan: "Lade einen Brief oder eine Rechnung hoch — Büro erkennt automatisch Fristen und schlägt Aktionen vor.",
+  templates:
+    "Häufige Anschreiben in Sekunden — Kündigung, Widerspruch, Datenschutzauskunft und mehr.",
   categories: "Deine Post nach Absender-Typ gruppiert. Klick öffnet das gefilterte Archiv.",
-  contacts: "Behörden, Banken, Vermieter — mit IBAN, Adresse und verknüpften Dokumenten.",
+  contacts:
+    "Speichere Behörden, Banken und Vermieter mit IBAN und Adresse — verknüpft automatisch mit deinen Dokumenten.",
   archive: "Alle Dokumente durchsuchen und filtern. Auch erledigte bleiben hier auffindbar.",
-  settings: "Design ändern, lokale Ordner freigeben — alles bleibt auf deinem Gerät.",
+  settings:
+    "Verbinde Google Calendar, gib Ordner frei und passe Büro an deine Bedürfnisse an.",
 };
+
+const SEARCH_TIP =
+  "Suche nach IBANs, Beträgen, Namen oder Daten — alles was in Büro gespeichert ist.";
 
 const INITIAL_DOCS = [];
 
@@ -1698,6 +1746,7 @@ function ReminderFormModal({
   onSave,
   onCancel,
 }) {
+  const isEdit = !!initial?.id;
   const [form, setForm] = useState(() => ({
     title: "",
     date: "",
@@ -1707,7 +1756,7 @@ function ReminderFormModal({
     ...(initial || {}),
   }));
   const [syncToGoogle, setSyncToGoogle] = useState(
-    !initial && googleConnected && googleAutoExport
+    !isEdit && googleConnected && googleAutoExport
   );
   const [error, setError] = useState(null);
 
@@ -1806,7 +1855,7 @@ function ReminderFormModal({
           />
         </div>
 
-        {googleConnected && !initial && (
+        {googleConnected && !isEdit && (
           <GoogleSyncToggle
             checked={syncToGoogle}
             onChange={setSyncToGoogle}
@@ -2062,6 +2111,7 @@ function EventFormModal({
   onSave,
   onCancel,
 }) {
+  const isEdit = !!initial?.id;
   const [form, setForm] = useState(() => ({
     title: "",
     date: "",
@@ -2071,7 +2121,7 @@ function EventFormModal({
     ...(initial || {}),
   }));
   const [syncToGoogle, setSyncToGoogle] = useState(
-    !initial && googleConnected && googleAutoExport
+    !isEdit && googleConnected && googleAutoExport
   );
   const [error, setError] = useState(null);
 
@@ -2166,7 +2216,7 @@ function EventFormModal({
           />
         </div>
 
-        {googleConnected && !initial && (
+        {googleConnected && !isEdit && (
           <GoogleSyncToggle
             checked={syncToGoogle}
             onChange={setSyncToGoogle}
@@ -2396,6 +2446,8 @@ function SearchModal({
   reminders,
   events,
   fileIndex,
+  showTip,
+  onDismissTip,
   onOpenDoc,
   onOpenContact,
   onOpenReminder,
@@ -2446,6 +2498,10 @@ function SearchModal({
             spellCheck={false}
           />
         </div>
+
+        {showTip && (
+          <TabTip text={SEARCH_TIP} onDismiss={onDismissTip} />
+        )}
 
         {!results && (
           <div className="search-empty-state">
@@ -5215,7 +5271,7 @@ function loadUserEmail() {
 
 function loadTooltipsSeen() {
   try {
-    const raw = localStorage.getItem(TOOLTIPS_SEEN_KEY);
+    const raw = localStorage.getItem(TIPS_SEEN_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) return new Set(parsed);
@@ -5281,6 +5337,14 @@ export default function App() {
   );
   const [googleEvents, setGoogleEvents] = useState([]);
   const [googleBusy, setGoogleBusy] = useState(false);
+  const [installPromptEvent, setInstallPromptEvent] = useState(null);
+  const [installDismissed, setInstallDismissed] = useState(() => {
+    try {
+      return localStorage.getItem(INSTALL_DISMISSED_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
 
   const googleConnected =
     !!googleToken && googleToken.expiresAt > Date.now();
@@ -5334,7 +5398,7 @@ export default function App() {
   useEffect(() => {
     try {
       localStorage.setItem(
-        TOOLTIPS_SEEN_KEY,
+        TIPS_SEEN_KEY,
         JSON.stringify([...tooltipsSeen])
       );
     } catch {
@@ -5383,6 +5447,42 @@ export default function App() {
     refreshGoogleEvents();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, googleToken, googleShowCalendar]);
+
+  useEffect(() => {
+    function onPrompt(e) {
+      e.preventDefault();
+      setInstallPromptEvent(e);
+    }
+    function onInstalled() {
+      setInstallPromptEvent(null);
+    }
+    window.addEventListener("beforeinstallprompt", onPrompt);
+    window.addEventListener("appinstalled", onInstalled);
+    return () => {
+      window.removeEventListener("beforeinstallprompt", onPrompt);
+      window.removeEventListener("appinstalled", onInstalled);
+    };
+  }, []);
+
+  async function handleInstallClick() {
+    if (!installPromptEvent) return;
+    try {
+      installPromptEvent.prompt();
+      await installPromptEvent.userChoice;
+    } catch {
+      // ignore
+    }
+    setInstallPromptEvent(null);
+  }
+
+  function dismissInstallBanner() {
+    try {
+      localStorage.setItem(INSTALL_DISMISSED_KEY, "1");
+    } catch {
+      // ignore
+    }
+    setInstallDismissed(true);
+  }
 
   useEffect(() => {
     function onKey(e) {
@@ -5773,7 +5873,7 @@ export default function App() {
   function celebrateFirstScan() {
     if (tooltipsSeen.has("first_scan_done")) return;
     markTooltipSeen("first_scan_done");
-    markTooltipSeen("tab_scan");
+    markTooltipSeen("scan");
     setSuccessToast("Dein erstes Dokument ist gespeichert.");
     setTab("home");
   }
@@ -6232,11 +6332,11 @@ export default function App() {
       </button>
       <main className="main">
         {TAB_TIPS[tab] &&
-          !tooltipsSeen.has(`tab_${tab}`) &&
+          !tooltipsSeen.has(tab) &&
           !(tab === "scan" && !tooltipsSeen.has("first_scan_done")) && (
             <TabTip
               text={TAB_TIPS[tab]}
-              onDismiss={() => markTooltipSeen(`tab_${tab}`)}
+              onDismiss={() => markTooltipSeen(tab)}
             />
           )}
         {tab === "home" && (
@@ -6507,6 +6607,8 @@ export default function App() {
           reminders={reminders}
           events={events}
           fileIndex={fileIndex}
+          showTip={!tooltipsSeen.has("search")}
+          onDismissTip={() => markTooltipSeen("search")}
           onClose={() => setSearchOpen(false)}
           onOpenDoc={setSelectedId}
           onOpenContact={setSelectedContactId}
@@ -6518,6 +6620,35 @@ export default function App() {
 
       {disclaimerOpen && (
         <DisclaimerModal onAcknowledge={acknowledgeDisclaimer} />
+      )}
+
+      {installPromptEvent && !installDismissed && (
+        <div className="install-banner" role="dialog" aria-labelledby="install-title">
+          <div className="install-banner-body">
+            <div className="install-banner-title" id="install-title">
+              Büro auf dem Homescreen
+            </div>
+            <div className="install-banner-sub">
+              Installier Büro als App — schneller Zugriff ohne Browser-Tab.
+            </div>
+          </div>
+          <div className="install-banner-actions">
+            <button
+              type="button"
+              className="btn-secondary btn-primary-sm"
+              onClick={dismissInstallBanner}
+            >
+              Später
+            </button>
+            <button
+              type="button"
+              className="btn-primary btn-primary-sm"
+              onClick={handleInstallClick}
+            >
+              Installieren
+            </button>
+          </div>
+        </div>
       )}
 
       {successToast && (
