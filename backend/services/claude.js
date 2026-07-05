@@ -2,15 +2,6 @@ const Anthropic = require("@anthropic-ai/sdk");
 
 const MODEL = "claude-sonnet-4-6";
 
-const ALLOWED_CATEGORIES = [
-  "Finanzamt",
-  "Krankenkasse",
-  "Vermieter",
-  "Inkasso",
-  "Versicherung",
-  "Sonstiges",
-];
-
 const ALLOWED_DEADLINE_TYPES = [
   "zahlung",
   "antwort",
@@ -62,7 +53,7 @@ JSON-Schema (Teil 1):
 
 {
   "documentType": "Kurzbezeichnung des Dokumenttyps (z.B. Bußgeldbescheid, Steuerbescheid, Mahnung)",
-  "category": "Genau EINER dieser Werte: ${ALLOWED_CATEGORIES.join(", ")}",
+  "category": "Präzise, kurze Kategorie die den Absender/Kontext am besten beschreibt. Beispiele: Finanzamt, Krankenkasse, Universität, Arbeitgeber, Vermieter, Inkasso, Versicherung, Bank. Du bist nicht auf diese beschränkt — wähle was am besten passt. Niemals 'Sonstiges' wenn der Absender klar erkennbar ist. Nur wenn wirklich unklar, dann null.",
   "sender": "Name des Absenders/der Behörde (z.B. 'Finanzamt München-Mitte'), oder null wenn unklar",
   "amount": "Wichtigster Geldbetrag als Zahl in Euro (z.B. 230.00) oder null wenn keiner erkennbar. Nur Zahl, kein Währungssymbol, Punkt als Dezimaltrennzeichen.",
   "summary": "2-4 Sätze verständliche Zusammenfassung in einfacher Sprache",
@@ -78,14 +69,6 @@ JSON-Schema (Teil 1):
     }
   ]
 }
-
-Ordne die Kategorie nach Absender/Inhalt zu:
-- Finanzamt: Steuerbescheide, Mahnungen vom Finanzamt
-- Krankenkasse: Beitragsbescheide, Leistungsentscheidungen der GKV/PKV
-- Vermieter: Miete, Nebenkostenabrechnung, Hausverwaltung
-- Inkasso: Inkassobüros, Mahnbescheide von Gläubigern (nicht Finanzamt)
-- Versicherung: KFZ-, Haftpflicht-, Rechtsschutz- etc. (nicht Krankenversicherung)
-- Sonstiges: alles andere (Rente, BAföG, Behörden, GEZ, ...)
 
 Ordne den deadlineType nach Art der Frist zu:
 - zahlung: Zahlungsfrist (Rechnung, Bußgeld, Mahnung, Steuernachzahlung)
@@ -220,9 +203,10 @@ async function analyzeDocument(base64, mimeType) {
     }
   }
 
-  const category = ALLOWED_CATEGORIES.includes(parsed.category)
-    ? parsed.category
-    : "Sonstiges";
+  const category =
+    typeof parsed.category === "string" && parsed.category.trim()
+      ? parsed.category.trim()
+      : "Sonstiges";
   const amount =
     typeof parsed.amount === "number" && !Number.isNaN(parsed.amount)
       ? parsed.amount
@@ -495,7 +479,7 @@ kein Fließtext davor/danach):
 
 {
   "documentType": "SEPA-Überweisung | Link | Kontakt | WLAN | Text | ...",
-  "category": "Genau EINER dieser Werte: ${ALLOWED_CATEGORIES.join(", ")}",
+  "category": "Kurze passende Kategorie basierend auf QR-Inhalt (z.B. 'Bank' für SEPA, 'Website' für URL). Wenn nichts passt, null.",
   "sender": "Bei SEPA: Zahlungsempfänger. Bei vCard: Name. Sonst null.",
   "amount": "Bei SEPA: Zahl in Euro (Punkt als Dezimaltrennzeichen). Sonst null.",
   "summary": "1-2 Sätze in einfacher Sprache, was der Nutzer damit tun kann",
@@ -554,9 +538,10 @@ async function analyzeQrContent(content) {
     throw new Error("Claude QR response did not contain JSON");
   }
   const parsed = JSON.parse(text.slice(jsonStart, jsonEnd + 1));
-  const category = ALLOWED_CATEGORIES.includes(parsed.category)
-    ? parsed.category
-    : "Sonstiges";
+  const category =
+    typeof parsed.category === "string" && parsed.category.trim()
+      ? parsed.category.trim()
+      : "Sonstiges";
   const amount =
     typeof parsed.amount === "number" && !Number.isNaN(parsed.amount)
       ? parsed.amount
