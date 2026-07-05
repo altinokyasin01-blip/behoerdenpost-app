@@ -719,6 +719,79 @@ input {
   transform: translateY(-1px);
 }
 
+/* Manager variant: card wraps a button-body + CardMenu sibling */
+.cat-card-wrap {
+  padding: 0;
+  position: relative;
+  transform: none;
+}
+
+.cat-card-wrap:hover {
+  transform: none;
+}
+
+.cat-card-body {
+  display: block;
+  width: 100%;
+  padding: 16px 44px 16px 16px;
+  background: transparent;
+  border: 0;
+  border-radius: 12px;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.cat-card-body:hover {
+  background: var(--surface-hover);
+}
+
+/* Detail-view back button + title */
+.btn-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: transparent;
+  border: 0;
+  color: var(--text-muted);
+  font-size: 13.5px;
+  padding: 4px 8px 4px 0;
+  margin-bottom: 8px;
+  cursor: pointer;
+}
+
+.btn-back:hover {
+  color: var(--text);
+}
+
+.cat-detail-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  margin: 0 0 4px;
+  cursor: pointer;
+  font: inherit;
+  color: var(--text);
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.cat-detail-title-hint {
+  font-size: 15px;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.cat-detail-title:hover .cat-detail-title-hint {
+  color: var(--text);
+}
+
 .cat-symbol {
   width: 36px;
   height: 36px;

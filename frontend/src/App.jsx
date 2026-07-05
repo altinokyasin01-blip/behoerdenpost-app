@@ -5290,7 +5290,41 @@ function ScanView({ docs, isFirstScan, onScanned, onOpenDoc }) {
   );
 }
 
-function CategoriesView({ docs, onOpenCategory, onNav }) {
+function CategoryRenameModal({ value, existingCategories, onSave, onCancel }) {
+  return (
+    <Modal onClose={onCancel}>
+      <div className="detail">
+        <div className="detail-head">
+          <div className="detail-title">Kategorie umbenennen</div>
+          <div className="detail-sender">
+            Alle Dokumente unter „{value}" werden auf den neuen Namen verschoben.
+          </div>
+        </div>
+        <CategoryEditor
+          value={value}
+          existingCategories={existingCategories}
+          onChange={onSave}
+          onCancel={onCancel}
+        />
+      </div>
+    </Modal>
+  );
+}
+
+function CategoriesView({
+  docs,
+  existingCategories,
+  onNav,
+  onOpenDoc,
+  onUpdateDocCategory,
+  onRenameCategory,
+  onRemoveCategory,
+}) {
+  const [selectedCategory, setSelectedCategory] = useState(null);
+  const [renamingCategory, setRenamingCategory] = useState(null);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [editingDocId, setEditingDocId] = useState(null);
+
   const groups = useMemo(() => {
     const map = new Map();
     for (const d of docs) {
@@ -5302,14 +5336,130 @@ function CategoriesView({ docs, onOpenCategory, onNav }) {
     }
     return [...map.entries()]
       .map(([name, counts]) => ({ name, ...counts }))
-      .sort((a, b) => b.open - a.open || b.total - a.total || a.name.localeCompare(b.name));
+      .sort(
+        (a, b) =>
+          b.open - a.open ||
+          b.total - a.total ||
+          a.name.localeCompare(b.name)
+      );
   }, [docs]);
 
+  // ---- Detail view ----
+  if (selectedCategory) {
+    const catDocs = docs.filter(
+      (d) => (d.category || "Sonstiges") === selectedCategory
+    );
+    return (
+      <div className="view">
+        <button
+          type="button"
+          className="btn-back"
+          onClick={() => {
+            setSelectedCategory(null);
+            setEditingTitle(false);
+            setEditingDocId(null);
+          }}
+        >
+          ← Kategorien
+        </button>
+
+        <header className="view-header">
+          {editingTitle ? (
+            <CategoryEditor
+              value={selectedCategory}
+              existingCategories={existingCategories.filter(
+                (c) => c !== selectedCategory
+              )}
+              onChange={(newName) => {
+                onRenameCategory(selectedCategory, newName);
+                setSelectedCategory(newName);
+                setEditingTitle(false);
+              }}
+              onCancel={() => setEditingTitle(false)}
+            />
+          ) : (
+            <button
+              type="button"
+              className="cat-detail-title"
+              onClick={() => setEditingTitle(true)}
+              title="Kategorie umbenennen"
+            >
+              <span>{selectedCategory}</span>
+              <span className="cat-detail-title-hint" aria-hidden="true">
+                ✎
+              </span>
+            </button>
+          )}
+          <p className="lead">
+            {catDocs.length} Dokument{catDocs.length === 1 ? "" : "e"}
+          </p>
+        </header>
+
+        <div className="doc-list">
+          {catDocs.length === 0 && (
+            <div className="empty">Keine Dokumente in dieser Kategorie.</div>
+          )}
+          {catDocs.map((d) => {
+            if (editingDocId === d.id) {
+              return (
+                <div key={d.id} className="card doc-card doc-card-editing">
+                  <div className="doc-body">
+                    <div className="doc-title">{d.title}</div>
+                    <div className="doc-meta">Kategorie ändern:</div>
+                    <CategoryEditor
+                      value={d.category}
+                      existingCategories={existingCategories}
+                      onChange={(cat) => {
+                        onUpdateDocCategory(d.id, cat);
+                        setEditingDocId(null);
+                      }}
+                      onCancel={() => setEditingDocId(null)}
+                    />
+                  </div>
+                </div>
+              );
+            }
+            return (
+              <div key={d.id} className="card doc-card doc-card-wrap">
+                <button
+                  type="button"
+                  className="doc-card-body"
+                  onClick={() => onOpenDoc(d.id)}
+                >
+                  <div className="doc-body">
+                    <div className="doc-title">{d.title}</div>
+                    <div className="doc-meta">
+                      {formatDate(d.date)}
+                      {d.sender && ` · ${d.sender}`}
+                    </div>
+                  </div>
+                  <StatusBadge status={d.status} />
+                </button>
+                <CardMenu
+                  items={[
+                    { label: "Öffnen", onClick: () => onOpenDoc(d.id) },
+                    {
+                      label: "Kategorie ändern",
+                      onClick: () => setEditingDocId(d.id),
+                    },
+                  ]}
+                />
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  // ---- Overview ----
   return (
     <div className="view">
       <header className="view-header">
         <h1>Kategorien</h1>
-        <p className="lead">Deine Post nach Absender gruppiert.</p>
+        <p className="lead">
+          Deine Post nach Kategorien gruppiert. Klick eine Karte zum Öffnen.
+        </p>
       </header>
 
       {groups.length === 0 ? (
@@ -5327,43 +5477,62 @@ function CategoriesView({ docs, onOpenCategory, onNav }) {
       ) : (
         <div className="cat-grid">
           {groups.map((g) => (
-            <button
-              key={g.name}
-              className="card cat-card"
-              type="button"
-              onClick={() => onOpenCategory(g.name)}
-            >
-              <div className="cat-symbol">{categorySymbol(g.name)}</div>
-              <div className="cat-name">{g.name}</div>
-              <div className="cat-meta">
-                {g.total} Brief{g.total === 1 ? "" : "e"}
-                {g.open > 0 && (
-                  <>
-                    {" · "}
-                    <span className="text-red">{g.open} offen</span>
-                  </>
-                )}
-              </div>
-            </button>
+            <div key={g.name} className="card cat-card cat-card-wrap">
+              <button
+                type="button"
+                className="cat-card-body"
+                onClick={() => setSelectedCategory(g.name)}
+              >
+                <div className="cat-symbol">{categorySymbol(g.name)}</div>
+                <div className="cat-name">{g.name}</div>
+                <div className="cat-meta">
+                  {g.total} Brief{g.total === 1 ? "" : "e"}
+                  {g.open > 0 && (
+                    <>
+                      {" · "}
+                      <span className="text-red">{g.open} offen</span>
+                    </>
+                  )}
+                </div>
+              </button>
+              <CardMenu
+                items={[
+                  {
+                    label: "Umbenennen",
+                    onClick: () => setRenamingCategory(g.name),
+                  },
+                  {
+                    label: "Löschen",
+                    onClick: () => {
+                      if (
+                        confirm(
+                          `Kategorie „${g.name}" löschen? Die Dokumente bleiben erhalten und wechseln zu „Sonstiges".`
+                        )
+                      ) {
+                        onRemoveCategory(g.name);
+                      }
+                    },
+                  },
+                ]}
+              />
+            </div>
           ))}
         </div>
       )}
 
-      <h2 className="section-title">Werkzeuge</h2>
-      <div className="tool-grid">
-        <button className="card tool-card" type="button">
-          <div className="tool-title">Widerspruchsgenerator</div>
-          <div className="tool-sub">
-            Automatisch begründete Widersprüche verfassen
-          </div>
-        </button>
-        <button className="card tool-card" type="button">
-          <div className="tool-title">Fristen-Kalender</div>
-          <div className="tool-sub">
-            Alle Deadlines auf einen Blick, mit Erinnerungen
-          </div>
-        </button>
-      </div>
+      {renamingCategory && (
+        <CategoryRenameModal
+          value={renamingCategory}
+          existingCategories={existingCategories.filter(
+            (c) => c !== renamingCategory
+          )}
+          onSave={(newName) => {
+            onRenameCategory(renamingCategory, newName);
+            setRenamingCategory(null);
+          }}
+          onCancel={() => setRenamingCategory(null)}
+        />
+      )}
     </div>
   );
 }
@@ -7208,11 +7377,6 @@ export default function App() {
     setTab(nextTab);
   }
 
-  function openCategory(name) {
-    setCategoryFilter(name);
-    setTab("archive");
-  }
-
   function openAddContact() {
     setContactFormMode("add");
     setContactFormPrefill(null);
@@ -7333,6 +7497,28 @@ export default function App() {
     );
   }
 
+  function renameCategory(oldName, newName) {
+    const trimmed = (newName || "").trim();
+    if (!trimmed || trimmed === oldName) return;
+    setDocs((prev) =>
+      prev.map((d) =>
+        (d.category || "Sonstiges") === oldName
+          ? { ...d, category: trimmed }
+          : d
+      )
+    );
+  }
+
+  function removeCategory(name) {
+    setDocs((prev) =>
+      prev.map((d) =>
+        (d.category || "Sonstiges") === name
+          ? { ...d, category: "Sonstiges" }
+          : d
+      )
+    );
+  }
+
   return (
     <div className="app">
       <Sidebar
@@ -7410,8 +7596,12 @@ export default function App() {
         {tab === "categories" && (
           <CategoriesView
             docs={docs}
-            onOpenCategory={openCategory}
+            existingCategories={existingCategories}
             onNav={navigate}
+            onOpenDoc={setSelectedId}
+            onUpdateDocCategory={updateDocCategory}
+            onRenameCategory={renameCategory}
+            onRemoveCategory={removeCategory}
           />
         )}
         {tab === "contacts" && (
