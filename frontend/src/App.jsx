@@ -7275,6 +7275,15 @@ export default function App() {
   // Derive email from session (Supabase is now the source of truth)
   const authEmail = session?.user?.email || userEmail;
 
+  // Hooks (useMemo etc.) MUST live before any early-return to keep hook order stable.
+  const existingCategories = useMemo(() => {
+    const set = new Set();
+    for (const d of docs) {
+      if (d.category) set.add(d.category);
+    }
+    return [...set].sort();
+  }, [docs]);
+
   if (!authReady) {
     return null;
   }
@@ -7315,14 +7324,6 @@ export default function App() {
     return s === "stale" || s === "missing";
   });
   const navBadges = { settings: hasStaleFolders };
-
-  const existingCategories = useMemo(() => {
-    const set = new Set();
-    for (const d of docs) {
-      if (d.category) set.add(d.category);
-    }
-    return [...set].sort();
-  }, [docs]);
 
   function updateDocCategory(id, category) {
     const trimmed = (category || "").trim();
