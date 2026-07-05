@@ -24,22 +24,41 @@ const FULLTEXT_SEPARATOR = "---FULLTEXT---";
 const SYSTEM_PROMPT = `Du bist ein Assistent zur Analyse deutscher amtlicher
 und geschäftlicher Post (Bescheide, Rechnungen, Verträge, Mahnungen).
 
-WICHTIG — Antworte in EXAKT diesem Format, in dieser Reihenfolge, mit
-diesen Trennlinien:
+Deine Antwort besteht aus GENAU DREI Teilen in dieser Reihenfolge:
 
-<JSON-Objekt gemäß Schema unten, keine Markdown-Codeblöcke>
+TEIL 1 — JSON-Objekt (gültiges JSON gemäß Schema unten).
+  Regeln: Strings in " " ; interne Zeilenumbrüche als \\n ; interne
+  Anführungszeichen als \\" ; Backslashes als \\\\ . Keine Markdown-Code-Blöcke,
+  kein Fließtext davor oder danach. Muss mit { beginnen und mit } enden.
+
+TEIL 2 — die Trennzeile (auf einer eigenen Zeile, exakt so):
 ${FULLTEXT_SEPARATOR}
-<Volltext des Dokuments, roh, ohne JSON-Escaping — bis zu 3000 Zeichen>
 
-Der Volltext nach der Trennlinie wird NICHT als JSON geparst, deshalb dürfen
-darin alle Zeichen vorkommen: Anführungszeichen "...", Backslashes \\,
-Zeilenumbrüche, Sonderzeichen §, Umlaute, Prozent, Klammern — alles. Extrahiere
-den Text wortgetreu wie im Dokument. Zusammenhängende Absätze durch Leerzeilen
-trennen. Priorisiere: Aktenzeichen, Absender+Empfänger-Adressen, Beträge,
-Datumsangaben, Namen, IBAN/Kontonummern, Rechtsbelehrungen, Fristen. Wenn kein
-Text erkennbar ist, lass den Volltext-Teil (nach ${FULLTEXT_SEPARATOR}) leer.
+TEIL 3 — der Volltext des Dokuments als ROHER TEXT (KEIN JSON).
+  Hier gelten KEINE Escaping-Regeln. Erlaubt und erwünscht sind:
+  echte Zeilenumbrüche, Anführungszeichen "...", Backslashes \\,
+  Sonderzeichen § € %, Umlaute, Klammern () {} [], alles. Extrahiere
+  den Text wortgetreu wie im Dokument. Absätze durch Leerzeilen trennen.
+  Priorisiere Aktenzeichen, Absender+Empfänger-Adressen, Beträge, Datums-
+  angaben, Namen, IBAN/Kontonummern, Rechtsbelehrungen, Fristen. Maximal
+  3000 Zeichen. Wenn kein Text im Dokument erkennbar ist, lass Teil 3 leer.
 
-JSON-Schema (Teil vor der Trennlinie):
+BEISPIEL für die Struktur (nicht Inhalt, nur Format):
+
+{"documentType":"Mahnung","category":"Sonstiges","sender":"Beispiel GmbH","amount":50.00,"summary":"Kurze Zusammenfassung.","deadline":null,"deadlineType":null,"replyDraft":null,"actions":[]}
+${FULLTEXT_SEPARATOR}
+Beispiel GmbH
+Musterstraße 1
+12345 Berlin
+
+Kundennummer: 4711
+Aktenzeichen: ABC-2024/001
+
+Sehr geehrte Frau Muster,
+
+hiermit möchten wir Sie an die noch offene...
+
+JSON-Schema (Teil 1):
 
 {
   "documentType": "Kurzbezeichnung des Dokumenttyps (z.B. Bußgeldbescheid, Steuerbescheid, Mahnung)",
@@ -172,13 +191,33 @@ async function analyzeDocument(base64, mimeType) {
     throw new Error("Claude response did not contain JSON");
   }
 
+  const jsonSlice = jsonPart.slice(jsonStart, jsonEnd + 1);
   let parsed;
   try {
-    parsed = JSON.parse(jsonPart.slice(jsonStart, jsonEnd + 1));
-  } catch (e) {
-    console.error("Claude JSON parse failed:", e.message);
-    console.error("JSON slice (first 500 chars):", jsonPart.slice(jsonStart, jsonStart + 500));
-    throw new Error(`Claude response was not valid JSON: ${e.message}`);
+    parsed = JSON.parse(jsonSlice);
+  } catch (initialErr) {
+    // Attempt a repair pass: escape unescaped control chars inside strings.
+    console.warn(
+      "Claude JSON parse failed on first pass:",
+      initialErr.message,
+      "— attempting repair."
+    );
+    try {
+      parsed = JSON.parse(repairJson(jsonSlice));
+      console.log("Claude JSON repair succeeded.");
+    } catch (repairErr) {
+      console.error(
+        "Claude JSON repair failed:",
+        repairErr.message,
+        "\nOriginal error:",
+        initialErr.message,
+        "\nJSON slice (first 800 chars):",
+        jsonSlice.slice(0, 800)
+      );
+      throw new Error(
+        `Claude response was not valid JSON: ${initialErr.message}`
+      );
+    }
   }
 
   const category = ALLOWED_CATEGORIES.includes(parsed.category)
@@ -224,6 +263,49 @@ function splitFullText(text) {
   const jsonPart = text.slice(0, idx).trim();
   const fullText = text.slice(idx + FULLTEXT_SEPARATOR.length).trim() || null;
   return { jsonPart, fullText };
+}
+
+// Escape raw control characters (unescaped newlines, tabs, carriage returns)
+// that occur INSIDE JSON strings. This is the most common LLM-JSON failure
+// mode. Chars outside string literals are left alone.
+function repairJson(text) {
+  let out = "";
+  let inString = false;
+  let escape = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (escape) {
+      out += ch;
+      escape = false;
+      continue;
+    }
+    if (ch === "\\") {
+      out += ch;
+      escape = true;
+      continue;
+    }
+    if (ch === '"') {
+      out += ch;
+      inString = !inString;
+      continue;
+    }
+    if (inString) {
+      if (ch === "\n") {
+        out += "\\n";
+        continue;
+      }
+      if (ch === "\r") {
+        out += "\\r";
+        continue;
+      }
+      if (ch === "\t") {
+        out += "\\t";
+        continue;
+      }
+    }
+    out += ch;
+  }
+  return out;
 }
 
 const ACTION_TYPES = new Set([
