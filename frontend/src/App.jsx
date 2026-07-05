@@ -719,6 +719,8 @@ const CONTACT_TYPES = [
   "Behörde",
   "Bank",
   "Vermieter",
+  "Arbeitgeber",
+  "Universität",
   "Arzt",
   "Versicherung",
   "Sonstiges",
@@ -1492,6 +1494,17 @@ function formatActionValue(action) {
     if (v.time) parts.push(v.time);
     if (v.notes) parts.push(v.notes);
     return parts.join(" · ");
+  }
+  if (action.type === "contact") {
+    // value can be either a plain string (legacy) or a rich object
+    if (typeof action.value === "string") return action.value;
+    const v = action.value || {};
+    const parts = [v.name];
+    if (v.type) parts.push(v.type);
+    const loc = [v.zip, v.city].filter(Boolean).join(" ");
+    if (loc) parts.push(loc);
+    if (v.email) parts.push(v.email);
+    return parts.filter(Boolean).join(" · ");
   }
   return String(action.value);
 }
@@ -5944,32 +5957,43 @@ export default function App() {
 
   const userId = session?.user?.id || null;
 
+  const [syncError, setSyncError] = useState(null);
+  const onSyncError = (table, err) => {
+    setSyncError({
+      table,
+      message: err?.message || String(err),
+      hint: /column .* does not exist/i.test(err?.message || "")
+        ? "Schema fehlt in Supabase — führe das SQL aus (siehe letzten Task)."
+        : null,
+    });
+  };
+
   useEffect(() => {
     if (!userId || !dataReady) return;
     const prev = docsPrevRef.current;
     docsPrevRef.current = docs;
-    syncDiff("documents", prev, docs, userId);
+    syncDiff("documents", prev, docs, userId, onSyncError);
   }, [docs, userId, dataReady]);
 
   useEffect(() => {
     if (!userId || !dataReady) return;
     const prev = contactsPrevRef.current;
     contactsPrevRef.current = contacts;
-    syncDiff("contacts", prev, contacts, userId);
+    syncDiff("contacts", prev, contacts, userId, onSyncError);
   }, [contacts, userId, dataReady]);
 
   useEffect(() => {
     if (!userId || !dataReady) return;
     const prev = remindersPrevRef.current;
     remindersPrevRef.current = reminders;
-    syncDiff("reminders", prev, reminders, userId);
+    syncDiff("reminders", prev, reminders, userId, onSyncError);
   }, [reminders, userId, dataReady]);
 
   useEffect(() => {
     if (!userId || !dataReady) return;
     const prev = eventsPrevRef.current;
     eventsPrevRef.current = events;
-    syncDiff("events", prev, events, userId);
+    syncDiff("events", prev, events, userId, onSyncError);
   }, [events, userId, dataReady]);
 
   useEffect(() => {
@@ -6587,14 +6611,34 @@ export default function App() {
           });
         }
       } else if (a.type === "contact" && !contactPrefill) {
-        const name = String(a.value);
+        const info =
+          typeof a.value === "object" && a.value
+            ? a.value
+            : { name: String(a.value) };
+        const name = (info.name || "").trim();
+        if (!name) continue;
         const existing = contacts.find(
           (c) => c.name.toLowerCase() === name.toLowerCase()
         );
         if (!existing) {
+          const notesParts = [
+            info.notes,
+            info.website ? `Website: ${info.website}` : null,
+          ].filter(Boolean);
           contactPrefill = {
             name,
-            type: CATEGORY_TO_CONTACT_TYPE[doc.category] || "Sonstiges",
+            type:
+              (info.type && CONTACT_TYPES.includes(info.type)
+                ? info.type
+                : null) ||
+              CATEGORY_TO_CONTACT_TYPE[doc.category] ||
+              "Sonstiges",
+            email: info.email || "",
+            phone: info.phone || "",
+            street: info.street || "",
+            zip: info.zip || "",
+            city: info.city || "",
+            notes: notesParts.join("\n\n"),
           };
         }
       }
@@ -7470,6 +7514,26 @@ export default function App() {
           message={successToast}
           onDone={() => setSuccessToast(null)}
         />
+      )}
+
+      {syncError && (
+        <div className="sync-error-toast" role="alert">
+          <div className="sync-error-body">
+            <strong>Sync-Fehler ({syncError.table})</strong>
+            <div>{syncError.message}</div>
+            {syncError.hint && (
+              <div className="sync-error-hint">{syncError.hint}</div>
+            )}
+          </div>
+          <button
+            type="button"
+            className="sync-error-close"
+            onClick={() => setSyncError(null)}
+            aria-label="Schließen"
+          >
+            ×
+          </button>
+        </div>
       )}
     </div>
   );

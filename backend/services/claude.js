@@ -19,10 +19,27 @@ const ALLOWED_DEADLINE_TYPES = [
   "sonstiges",
 ];
 
+const FULLTEXT_SEPARATOR = "---FULLTEXT---";
+
 const SYSTEM_PROMPT = `Du bist ein Assistent zur Analyse deutscher amtlicher
 und geschäftlicher Post (Bescheide, Rechnungen, Verträge, Mahnungen).
-Analysiere das übermittelte Dokument und antworte AUSSCHLIESSLICH mit einem
-JSON-Objekt in exakt diesem Schema (keine Markdown-Codeblöcke, kein Fließtext):
+
+WICHTIG — Antworte in EXAKT diesem Format, in dieser Reihenfolge, mit
+diesen Trennlinien:
+
+<JSON-Objekt gemäß Schema unten, keine Markdown-Codeblöcke>
+${FULLTEXT_SEPARATOR}
+<Volltext des Dokuments, roh, ohne JSON-Escaping — bis zu 3000 Zeichen>
+
+Der Volltext nach der Trennlinie wird NICHT als JSON geparst, deshalb dürfen
+darin alle Zeichen vorkommen: Anführungszeichen "...", Backslashes \\,
+Zeilenumbrüche, Sonderzeichen §, Umlaute, Prozent, Klammern — alles. Extrahiere
+den Text wortgetreu wie im Dokument. Zusammenhängende Absätze durch Leerzeilen
+trennen. Priorisiere: Aktenzeichen, Absender+Empfänger-Adressen, Beträge,
+Datumsangaben, Namen, IBAN/Kontonummern, Rechtsbelehrungen, Fristen. Wenn kein
+Text erkennbar ist, lass den Volltext-Teil (nach ${FULLTEXT_SEPARATOR}) leer.
+
+JSON-Schema (Teil vor der Trennlinie):
 
 {
   "documentType": "Kurzbezeichnung des Dokumenttyps (z.B. Bußgeldbescheid, Steuerbescheid, Mahnung)",
@@ -30,7 +47,6 @@ JSON-Objekt in exakt diesem Schema (keine Markdown-Codeblöcke, kein Fließtext)
   "sender": "Name des Absenders/der Behörde (z.B. 'Finanzamt München-Mitte'), oder null wenn unklar",
   "amount": "Wichtigster Geldbetrag als Zahl in Euro (z.B. 230.00) oder null wenn keiner erkennbar. Nur Zahl, kein Währungssymbol, Punkt als Dezimaltrennzeichen.",
   "summary": "2-4 Sätze verständliche Zusammenfassung in einfacher Sprache",
-  "fullText": "Bis zu 3000 Zeichen zusammenhängender Originaltext aus dem Dokument. NICHT zusammenfassen — extrahiere möglichst wortgetreu die wichtigen Abschnitte: Aktenzeichen, Adressen (Absender+Empfänger), Beträge, Datumsangaben, Namen, Kontonummern/IBANs, Rechtsbelehrungen, Fristen. Absätze mit \\n\\n trennen. null nur wenn im Dokument gar kein Text erkennbar ist.",
   "deadline": "Wichtigste Frist im Format YYYY-MM-DD oder null wenn keine erkennbar",
   "deadlineType": "Genau EINER dieser Werte oder null wenn keine Frist: ${ALLOWED_DEADLINE_TYPES.join(", ")}",
   "replyDraft": "Vorschlag für ein Antwortschreiben (Deutsch, förmlicher Ton) oder null",
@@ -63,7 +79,18 @@ Regeln für "actions":
 - Mindestens 1, maximal 6 Einträge — sortiert nach priority (high zuerst).
 - Entscheide selbst, welche Aktionen für dieses konkrete Dokument sinnvoll sind.
 - Erlaubte type-Werte und ihre value-Semantik:
-  * "contact"   — value = Name der anzulegenden/zu verknüpfenden Kontaktperson/Organisation
+  * "contact"   — value = Objekt {
+                     "name": "Nur der Name der Organisation/Person — KEINE E-Mail-Adresse, KEINE Postadresse, KEIN Freitext. Reiner Name.",
+                     "type": "Behörde | Bank | Vermieter | Arbeitgeber | Universität | Arzt | Versicherung | Sonstiges",
+                     "email": "E-Mail falls im Dokument erkennbar",
+                     "phone": "Telefonnummer falls erkennbar",
+                     "street": "Straße + Hausnummer falls erkennbar",
+                     "zip": "Postleitzahl falls erkennbar",
+                     "city": "Stadt/Ort falls erkennbar",
+                     "website": "URL falls erkennbar",
+                     "notes": "Weitere relevante Infos die nicht in andere Felder passen: Ansprechpartner, Abteilung, Öffnungszeiten, Aktenzeichen, Kundennummer, USt-ID, Handelsregister etc."
+                   }
+                 Felder ohne erkennbaren Wert einfach weglassen. Der "name" ist Pflicht.
   * "reminder"  — value = ISO-Datum (YYYY-MM-DD), an dem erinnert werden soll
   * "amount"    — value = Zahl in Euro (Punkt als Dezimaltrennzeichen, kein Währungssymbol)
   * "deadline"  — value = ISO-Datum der Frist (YYYY-MM-DD)
@@ -123,7 +150,7 @@ async function analyzeDocument(base64, mimeType) {
           buildContentBlock(base64, mimeType),
           {
             type: "text",
-            text: "Analysiere dieses Behördendokument und liefere die JSON-Antwort gemäß Schema.",
+            text: `Analysiere dieses Dokument. Antworte im vorgegebenen Format: JSON, dann Zeile "${FULLTEXT_SEPARATOR}", dann der Volltext.`,
           },
         ],
       },
@@ -136,13 +163,24 @@ async function analyzeDocument(base64, mimeType) {
     .join("")
     .trim();
 
-  const jsonStart = text.indexOf("{");
-  const jsonEnd = text.lastIndexOf("}");
+  const { jsonPart, fullText: rawFullText } = splitFullText(text);
+
+  const jsonStart = jsonPart.indexOf("{");
+  const jsonEnd = jsonPart.lastIndexOf("}");
   if (jsonStart === -1 || jsonEnd === -1) {
+    console.error("Claude response missing JSON braces. First 500 chars:", text.slice(0, 500));
     throw new Error("Claude response did not contain JSON");
   }
 
-  const parsed = JSON.parse(text.slice(jsonStart, jsonEnd + 1));
+  let parsed;
+  try {
+    parsed = JSON.parse(jsonPart.slice(jsonStart, jsonEnd + 1));
+  } catch (e) {
+    console.error("Claude JSON parse failed:", e.message);
+    console.error("JSON slice (first 500 chars):", jsonPart.slice(jsonStart, jsonStart + 500));
+    throw new Error(`Claude response was not valid JSON: ${e.message}`);
+  }
+
   const category = ALLOWED_CATEGORIES.includes(parsed.category)
     ? parsed.category
     : "Sonstiges";
@@ -156,10 +194,14 @@ async function analyzeDocument(base64, mimeType) {
         ? parsed.deadlineType
         : "sonstiges")
     : null;
-  const fullText =
-    typeof parsed.fullText === "string" && parsed.fullText.trim()
-      ? parsed.fullText.trim().slice(0, 3000)
-      : null;
+  // Prefer the separator-delivered fullText (robust). Fall back to a
+  // "fullText" field inside the JSON if the model ignored the format.
+  let fullText = rawFullText;
+  if (!fullText && typeof parsed.fullText === "string" && parsed.fullText.trim()) {
+    fullText = parsed.fullText.trim();
+  }
+  fullText = fullText ? fullText.slice(0, 3000) : null;
+
   return {
     documentType: parsed.documentType ?? null,
     category,
@@ -172,6 +214,16 @@ async function analyzeDocument(base64, mimeType) {
     replyDraft: parsed.replyDraft ?? null,
     actions: normalizeActions(parsed.actions),
   };
+}
+
+function splitFullText(text) {
+  const idx = text.indexOf(FULLTEXT_SEPARATOR);
+  if (idx === -1) {
+    return { jsonPart: text, fullText: null };
+  }
+  const jsonPart = text.slice(0, idx).trim();
+  const fullText = text.slice(idx + FULLTEXT_SEPARATOR.length).trim() || null;
+  return { jsonPart, fullText };
 }
 
 const ACTION_TYPES = new Set([
@@ -203,6 +255,49 @@ function normalizeEventValue(raw) {
   return { title, date, time, notes };
 }
 
+const ALLOWED_CONTACT_TYPES = new Set([
+  "Behörde",
+  "Bank",
+  "Vermieter",
+  "Arbeitgeber",
+  "Universität",
+  "Arzt",
+  "Versicherung",
+  "Sonstiges",
+]);
+
+function normalizeContactValue(raw) {
+  // Backward compatibility: string value is treated as name
+  if (typeof raw === "string") {
+    const name = raw.trim();
+    return name ? { name } : null;
+  }
+  if (!raw || typeof raw !== "object") return null;
+  const name = typeof raw.name === "string" ? raw.name.trim() : "";
+  if (!name) return null;
+  const out = { name };
+  if (
+    typeof raw.type === "string" &&
+    ALLOWED_CONTACT_TYPES.has(raw.type.trim())
+  ) {
+    out.type = raw.type.trim();
+  }
+  for (const field of [
+    "email",
+    "phone",
+    "street",
+    "zip",
+    "city",
+    "website",
+    "notes",
+  ]) {
+    if (typeof raw[field] === "string" && raw[field].trim()) {
+      out[field] = raw[field].trim();
+    }
+  }
+  return out;
+}
+
 function normalizeActions(raw) {
   if (!Array.isArray(raw)) return [];
   const cleaned = [];
@@ -219,6 +314,10 @@ function normalizeActions(raw) {
     }
     if (item.type === "event") {
       value = normalizeEventValue(value);
+      if (!value) continue;
+    }
+    if (item.type === "contact") {
+      value = normalizeContactValue(value);
       if (!value) continue;
     }
     cleaned.push({ type: item.type, label, value: value ?? null, priority });

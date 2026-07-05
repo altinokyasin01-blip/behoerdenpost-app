@@ -192,7 +192,7 @@ const TABLE_MAP = {
   events: eventToRow,
 };
 
-export async function syncDiff(table, prev, current, userId) {
+export async function syncDiff(table, prev, current, userId, onError) {
   if (!supabase || !userId) return;
   const toRow = TABLE_MAP[table];
   if (!toRow) return;
@@ -227,7 +227,10 @@ export async function syncDiff(table, prev, current, userId) {
 
   const results = await Promise.all(ops);
   for (const r of results) {
-    if (r.error) console.error(`syncDiff(${table}) failed:`, r.error);
+    if (r.error) {
+      console.error(`syncDiff(${table}) failed:`, r.error);
+      onError?.(table, r.error);
+    }
   }
 }
 

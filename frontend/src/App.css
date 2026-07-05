@@ -1581,6 +1581,63 @@ input {
   line-height: 1.5;
 }
 
+.sync-error-toast {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 200;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  background: var(--red-soft);
+  color: var(--text);
+  border: 1px solid var(--red);
+  border-radius: 12px;
+  box-shadow: var(--shadow-md);
+  max-width: min(520px, calc(100vw - 32px));
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.sync-error-body strong {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--red);
+}
+
+.sync-error-hint {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--text-soft);
+  font-style: italic;
+}
+
+.sync-error-close {
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 20px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+}
+
+.sync-error-close:hover {
+  color: var(--text);
+}
+
+@media (max-width: 767px) {
+  .sync-error-toast {
+    left: 12px;
+    right: 12px;
+    max-width: none;
+    transform: none;
+    top: calc(12px + env(safe-area-inset-top, 0));
+  }
+}
+
 .install-banner {
   position: fixed;
   left: 50%;
