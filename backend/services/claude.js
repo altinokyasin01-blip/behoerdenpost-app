@@ -30,6 +30,7 @@ JSON-Objekt in exakt diesem Schema (keine Markdown-Codeblöcke, kein Fließtext)
   "sender": "Name des Absenders/der Behörde (z.B. 'Finanzamt München-Mitte'), oder null wenn unklar",
   "amount": "Wichtigster Geldbetrag als Zahl in Euro (z.B. 230.00) oder null wenn keiner erkennbar. Nur Zahl, kein Währungssymbol, Punkt als Dezimaltrennzeichen.",
   "summary": "2-4 Sätze verständliche Zusammenfassung in einfacher Sprache",
+  "fullText": "Bis zu 3000 Zeichen zusammenhängender Originaltext aus dem Dokument. NICHT zusammenfassen — extrahiere möglichst wortgetreu die wichtigen Abschnitte: Aktenzeichen, Adressen (Absender+Empfänger), Beträge, Datumsangaben, Namen, Kontonummern/IBANs, Rechtsbelehrungen, Fristen. Absätze mit \\n\\n trennen. null nur wenn im Dokument gar kein Text erkennbar ist.",
   "deadline": "Wichtigste Frist im Format YYYY-MM-DD oder null wenn keine erkennbar",
   "deadlineType": "Genau EINER dieser Werte oder null wenn keine Frist: ${ALLOWED_DEADLINE_TYPES.join(", ")}",
   "replyDraft": "Vorschlag für ein Antwortschreiben (Deutsch, förmlicher Ton) oder null",
@@ -113,7 +114,7 @@ function buildContentBlock(base64, mimeType) {
 async function analyzeDocument(base64, mimeType) {
   const response = await getClient().messages.create({
     model: MODEL,
-    max_tokens: 2048,
+    max_tokens: 4096,
     system: SYSTEM_PROMPT,
     messages: [
       {
@@ -155,12 +156,17 @@ async function analyzeDocument(base64, mimeType) {
         ? parsed.deadlineType
         : "sonstiges")
     : null;
+  const fullText =
+    typeof parsed.fullText === "string" && parsed.fullText.trim()
+      ? parsed.fullText.trim().slice(0, 3000)
+      : null;
   return {
     documentType: parsed.documentType ?? null,
     category,
     sender: parsed.sender ?? null,
     amount,
     summary: parsed.summary ?? null,
+    fullText,
     deadline,
     deadlineType,
     replyDraft: parsed.replyDraft ?? null,

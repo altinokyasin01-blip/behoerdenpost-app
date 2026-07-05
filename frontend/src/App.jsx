@@ -2535,6 +2535,18 @@ function searchAll(query, { docs, contacts, reminders, events, fileIndex }) {
     if (value === qDate) return { field, snippet: formatDate(value) };
     return null;
   }
+  function fullTextField(field, value) {
+    if (!value) return null;
+    const s = String(value);
+    const lower = s.toLowerCase();
+    if (lower.includes(q)) {
+      return { field, snippet: makeTextSnippet(s, qRaw) };
+    }
+    if (qCompact && normalizeCompact(s).includes(qCompact)) {
+      return { field, snippet: makeTextSnippet(s, qRaw) };
+    }
+    return null;
+  }
 
   const docHits = [];
   for (const d of docs) {
@@ -2545,6 +2557,7 @@ function searchAll(query, { docs, contacts, reminders, events, fileIndex }) {
       textField("Zusammenfassung", d.summary) ||
       textField("Notiz", d.notes) ||
       textField("Antwortentwurf", d.replyDraft) ||
+      fullTextField("Volltext", d.fullText) ||
       amountField("Betrag", d.amount) ||
       dateField("Frist", d.deadline) ||
       dateField("Datum", d.date);
@@ -6527,6 +6540,7 @@ export default function App() {
         : null,
       amount: result.amount ?? null,
       summary: result.summary || null,
+      fullText: result.fullText || null,
       replyDraft: result.replyDraft || null,
       status: "Offen",
       notes: null,
