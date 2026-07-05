@@ -1325,6 +1325,107 @@ function Modal({ onClose, children, dismissable = true }) {
   );
 }
 
+function CategoryEditor({
+  value,
+  existingCategories = [],
+  onChange,
+  onCancel,
+}) {
+  const [draft, setDraft] = useState(value || "");
+  const inputRef = useRef(null);
+  const listId = useMemo(
+    () => "catlist-" + Math.random().toString(36).slice(2, 8),
+    []
+  );
+
+  useEffect(() => {
+    inputRef.current?.focus();
+    inputRef.current?.select();
+  }, []);
+
+  function commit() {
+    const v = draft.trim();
+    if (v && v !== value) {
+      onChange(v);
+    } else {
+      onCancel?.();
+    }
+  }
+
+  return (
+    <div className="category-editor">
+      <input
+        ref={inputRef}
+        type="text"
+        list={listId}
+        className="form-input category-editor-input"
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            commit();
+          } else if (e.key === "Escape") {
+            e.preventDefault();
+            onCancel?.();
+          }
+        }}
+        placeholder="Kategorie eingeben oder wählen"
+        autoComplete="off"
+      />
+      <datalist id={listId}>
+        {existingCategories.map((cat) => (
+          <option key={cat} value={cat} />
+        ))}
+      </datalist>
+      <button
+        type="button"
+        className="btn-primary btn-primary-sm"
+        onClick={commit}
+      >
+        Übernehmen
+      </button>
+      <button
+        type="button"
+        className="btn-secondary btn-primary-sm"
+        onClick={() => onCancel?.()}
+      >
+        Abbrechen
+      </button>
+    </div>
+  );
+}
+
+function CategoryChip({ value, existingCategories, onChange }) {
+  const [editing, setEditing] = useState(false);
+  if (editing) {
+    return (
+      <CategoryEditor
+        value={value}
+        existingCategories={existingCategories}
+        onChange={(v) => {
+          onChange(v);
+          setEditing(false);
+        }}
+        onCancel={() => setEditing(false)}
+      />
+    );
+  }
+  return (
+    <button
+      type="button"
+      className="badge badge-neutral badge-editable"
+      onClick={() => setEditing(true)}
+      title="Kategorie bearbeiten"
+    >
+      {value || "Kategorie hinzufügen"}
+      <span className="badge-edit-hint" aria-hidden="true">
+        ✎
+      </span>
+    </button>
+  );
+}
+
 function DocumentModal({
   doc,
   onClose,
@@ -1332,6 +1433,8 @@ function DocumentModal({
   onEditDeadline,
   onDelete,
   onExportToCalendar,
+  existingCategories,
+  onUpdateCategory,
 }) {
   const [copied, setCopied] = useState(false);
   const days = doc.deadline ? daysUntil(doc.deadline) : null;
@@ -1356,7 +1459,11 @@ function DocumentModal({
         <div className="detail-head">
           <div className="detail-title">{doc.title}</div>
           <div className="detail-badges">
-            <span className="badge badge-neutral">{doc.category}</span>
+            <CategoryChip
+              value={doc.category}
+              existingCategories={existingCategories}
+              onChange={(cat) => onUpdateCategory(doc.id, cat)}
+            />
             <StatusBadge status={doc.status} />
           </div>
           <div className="detail-sender">
@@ -1509,7 +1616,13 @@ function formatActionValue(action) {
   return String(action.value);
 }
 
-function PostScanModal({ result, isFirstScan, onConfirm, onSkip }) {
+function PostScanModal({
+  result,
+  isFirstScan,
+  existingCategories,
+  onConfirm,
+  onSkip,
+}) {
   const actions = Array.isArray(result.actions) ? result.actions : [];
 
   const [enabled, setEnabled] = useState(() => {
@@ -1519,13 +1632,19 @@ function PostScanModal({ result, isFirstScan, onConfirm, onSkip }) {
     });
     return map;
   });
+  const [categoryDraft, setCategoryDraft] = useState(
+    result.category || "Sonstiges"
+  );
 
   function toggle(i) {
     setEnabled((prev) => ({ ...prev, [i]: !prev[i] }));
   }
 
   function handleConfirm() {
-    onConfirm(actions.filter((_, i) => enabled[i]));
+    onConfirm(
+      actions.filter((_, i) => enabled[i]),
+      { category: categoryDraft }
+    );
   }
 
   return (
@@ -1535,14 +1654,16 @@ function PostScanModal({ result, isFirstScan, onConfirm, onSkip }) {
           <div className="detail-title">
             Erkannt: {result.documentType || "Dokument"}
           </div>
-          {result.category && (
-            <div className="detail-badges">
-              <span className="badge badge-neutral">{result.category}</span>
-              {result.sender && (
-                <span className="detail-sender">{result.sender}</span>
-              )}
-            </div>
-          )}
+          <div className="detail-badges">
+            <CategoryChip
+              value={categoryDraft}
+              existingCategories={existingCategories}
+              onChange={setCategoryDraft}
+            />
+            {result.sender && (
+              <span className="detail-sender">{result.sender}</span>
+            )}
+          </div>
           {result.summary && (
             <div className="postscan-summary">{result.summary}</div>
           )}
@@ -5264,10 +5385,18 @@ const ARCHIVE_SORTS = {
   },
 };
 
-function ArchiveView({ docs, categoryFilter, onClearCategoryFilter, onOpenDoc }) {
+function ArchiveView({
+  docs,
+  categoryFilter,
+  onClearCategoryFilter,
+  onOpenDoc,
+  existingCategories,
+  onUpdateCategory,
+}) {
   const [filter, setFilter] = useState("all");
   const [sort, setSort] = useState("date_desc");
   const [search, setSearch] = useState("");
+  const [editingCategoryDocId, setEditingCategoryDocId] = useState(null);
 
   const years = useMemo(
     () => [...new Set(docs.map((d) => d.date.slice(0, 4)))].sort().reverse(),
@@ -5362,27 +5491,57 @@ function ArchiveView({ docs, categoryFilter, onClearCategoryFilter, onOpenDoc })
         {filtered.length === 0 && (
           <div className="empty">Keine Dokumente gefunden.</div>
         )}
-        {filtered.map((d) => (
-          <button
-            key={d.id}
-            type="button"
-            className="card doc-card"
-            onClick={() => onOpenDoc(d.id)}
-          >
-            <div className="doc-body">
-              <div className="doc-title-row">
-                <span className="doc-title">{d.title}</span>
-                <DeadlineTypeBadge type={d.deadlineType} />
+        {filtered.map((d) => {
+          if (editingCategoryDocId === d.id) {
+            return (
+              <div key={d.id} className="card doc-card doc-card-editing">
+                <div className="doc-body">
+                  <div className="doc-title">{d.title}</div>
+                  <div className="doc-meta">Kategorie ändern:</div>
+                  <CategoryEditor
+                    value={d.category}
+                    existingCategories={existingCategories}
+                    onChange={(cat) => {
+                      onUpdateCategory(d.id, cat);
+                      setEditingCategoryDocId(null);
+                    }}
+                    onCancel={() => setEditingCategoryDocId(null)}
+                  />
+                </div>
               </div>
-              <div className="doc-meta">
-                {d.sender} · {formatDate(d.date)} · {d.category}
-                {d.deadline && ` · Frist ${formatDate(d.deadline)}`}
-              </div>
-              {d.summary && <div className="doc-summary">{d.summary}</div>}
+            );
+          }
+          return (
+            <div key={d.id} className="card doc-card doc-card-wrap">
+              <button
+                type="button"
+                className="doc-card-body"
+                onClick={() => onOpenDoc(d.id)}
+              >
+                <div className="doc-body">
+                  <div className="doc-title-row">
+                    <span className="doc-title">{d.title}</span>
+                    <DeadlineTypeBadge type={d.deadlineType} />
+                  </div>
+                  <div className="doc-meta">
+                    {d.sender} · {formatDate(d.date)} · {d.category}
+                    {d.deadline && ` · Frist ${formatDate(d.deadline)}`}
+                  </div>
+                  {d.summary && <div className="doc-summary">{d.summary}</div>}
+                </div>
+                <StatusBadge status={d.status} />
+              </button>
+              <CardMenu
+                items={[
+                  {
+                    label: "Kategorie ändern",
+                    onClick: () => setEditingCategoryDocId(d.id),
+                  },
+                ]}
+              />
             </div>
-            <StatusBadge status={d.status} />
-          </button>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -6572,9 +6731,14 @@ export default function App() {
     };
   }
 
-  function handlePostScanConfirm(chosenActions) {
+  function handlePostScanConfirm(chosenActions, overrides = {}) {
     if (!pendingResult) return;
-    const doc = buildDocFromResult(pendingResult);
+    const doc = buildDocFromResult({
+      ...pendingResult,
+      ...(overrides.category !== undefined
+        ? { category: overrides.category }
+        : {}),
+    });
     const newReminders = [];
     const newEvents = [];
     const noteParts = [];
@@ -7152,6 +7316,22 @@ export default function App() {
   });
   const navBadges = { settings: hasStaleFolders };
 
+  const existingCategories = useMemo(() => {
+    const set = new Set();
+    for (const d of docs) {
+      if (d.category) set.add(d.category);
+    }
+    return [...set].sort();
+  }, [docs]);
+
+  function updateDocCategory(id, category) {
+    const trimmed = (category || "").trim();
+    if (!trimmed) return;
+    setDocs((prev) =>
+      prev.map((d) => (d.id === id ? { ...d, category: trimmed } : d))
+    );
+  }
+
   return (
     <div className="app">
       <Sidebar
@@ -7246,6 +7426,8 @@ export default function App() {
             categoryFilter={categoryFilter}
             onClearCategoryFilter={() => setCategoryFilter(null)}
             onOpenDoc={setSelectedId}
+            existingCategories={existingCategories}
+            onUpdateCategory={updateDocCategory}
           />
         )}
         {tab === "settings" && (
@@ -7281,11 +7463,13 @@ export default function App() {
       {selectedDoc && !deadlineEditDocId && (
         <DocumentModal
           doc={selectedDoc}
+          existingCategories={existingCategories}
           onClose={() => setSelectedId(null)}
           onToggleStatus={() => toggleStatus(selectedDoc.id)}
           onEditDeadline={() => openDeadlineEdit(selectedDoc.id)}
           onDelete={() => deleteDoc(selectedDoc.id)}
           onExportToCalendar={() => exportDocToICS(selectedDoc)}
+          onUpdateCategory={updateDocCategory}
         />
       )}
 
@@ -7424,6 +7608,7 @@ export default function App() {
         <PostScanModal
           result={pendingResult}
           isFirstScan={!tooltipsSeen.has("first_scan_done")}
+          existingCategories={existingCategories}
           onConfirm={handlePostScanConfirm}
           onSkip={handlePostScanSkip}
         />

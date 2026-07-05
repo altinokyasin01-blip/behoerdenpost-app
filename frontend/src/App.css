@@ -605,6 +605,37 @@ input {
   gap: 12px;
 }
 
+/* Archive variant: card wraps a button-body + CardMenu sibling */
+.doc-card-wrap {
+  padding: 0;
+  position: relative;
+  display: block;
+}
+
+.doc-card-body {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  width: 100%;
+  padding: 16px 44px 16px 16px;
+  background: transparent;
+  border: 0;
+  border-radius: 12px;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.doc-card-body:hover {
+  background: var(--surface-hover);
+}
+
+.doc-card-editing {
+  padding: 16px;
+}
+
 .doc-body {
   flex: 1;
   min-width: 0;
@@ -971,6 +1002,39 @@ input {
 .badge-neutral {
   background: var(--surface-muted);
   color: var(--text);
+}
+
+.badge-editable {
+  border: 1px dashed var(--border-strong);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.badge-editable:hover {
+  background: var(--surface-hover);
+  border-color: var(--accent);
+}
+
+.badge-edit-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1;
+}
+
+.category-editor {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.category-editor-input {
+  max-width: 240px;
+  padding: 6px 10px;
+  font-size: 14px;
 }
 
 .detail-sender {
