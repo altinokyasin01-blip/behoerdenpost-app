@@ -34,6 +34,7 @@ export function docToRow(doc, userId) {
     status: doc.status || "Offen",
     notes: doc.notes || null,
     manual: !!doc.manual,
+    recurring: !!doc.recurring,
     filename: doc.filename || null,
     scan_date: doc.date || null,
   };
@@ -55,6 +56,7 @@ export function rowToDoc(row) {
     status: row.status || "Offen",
     notes: row.notes,
     manual: !!row.manual,
+    recurring: !!row.recurring,
     filename: row.filename,
     date: row.scan_date || (row.created_at ? row.created_at.slice(0, 10) : null),
   };

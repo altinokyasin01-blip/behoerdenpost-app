@@ -65,6 +65,7 @@ export default function PostScanModal({
     // Explicit user context (scanned from a category page) outranks Claude's guess.
     categoryPrefill || result.category || "Sonstiges"
   );
+  const [recurringDraft, setRecurringDraft] = useState(!!result.recurring);
 
   function toggle(i) {
     setEnabled((prev) => ({ ...prev, [i]: !prev[i] }));
@@ -73,7 +74,7 @@ export default function PostScanModal({
   function handleConfirm() {
     onConfirm(
       actions.filter((_, i) => enabled[i]),
-      { category: categoryDraft }
+      { category: categoryDraft, recurring: recurringDraft }
     );
   }
 
@@ -106,6 +107,20 @@ export default function PostScanModal({
             ergibt — der Rest wird ignoriert.
           </div>
         )}
+
+        <label className="google-sync-toggle">
+          <input
+            type="checkbox"
+            checked={recurringDraft}
+            onChange={(e) => setRecurringDraft(e.target.checked)}
+          />
+          <div className="google-sync-body">
+            <div className="google-sync-title">Wiederkehrende Zahlung</div>
+            <div className="google-sync-sub">
+              Abo, Dauerauftrag oder Lastschrift, die sich regelmäßig wiederholt
+            </div>
+          </div>
+        </label>
 
         <h3 className="detail-heading">Vorgeschlagene Aktionen</h3>
         <div className="action-list">

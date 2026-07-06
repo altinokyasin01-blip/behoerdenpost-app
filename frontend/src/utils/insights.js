@@ -66,11 +66,13 @@ export function getCategoryGroups(docs) {
     );
 }
 
-// Doc ids considered "wahrscheinlich wiederkehrend": same sender, deadlineType
-// "zahlung", appearing 2+ times. contact.iban is treated as a supporting
-// signal by callers, not part of this gate — plenty of one-off invoices
-// carry an IBAN too (see the Telekom test scan), so IBAN alone would
-// over-flag.
+// Doc ids considered "wahrscheinlich wiederkehrend" — true if EITHER holds:
+//   1. explicit flag: doc.recurring was set (user confirmed at scan time, or
+//      Claude's prompt-based guess wasn't overridden)
+//   2. heuristic: same sender, deadlineType "zahlung", appearing 2+ times.
+// contact.iban is treated as a supporting signal by callers, not part of
+// this gate — plenty of one-off invoices carry an IBAN too (see the Telekom
+// test scan), so IBAN alone would over-flag.
 export function getRecurringPaymentDocIds(docs) {
   const groups = new Map();
   for (const d of docs) {
@@ -85,6 +87,9 @@ export function getRecurringPaymentDocIds(docs) {
     if (group.length >= 2) {
       for (const d of group) recurring.add(d.id);
     }
+  }
+  for (const d of docs) {
+    if (d.recurring) recurring.add(d.id);
   }
   return recurring;
 }

@@ -59,6 +59,7 @@ JSON-Schema (Teil 1):
   "summary": "2-4 Sätze verständliche Zusammenfassung in einfacher Sprache",
   "deadline": "Wichtigste Frist im Format YYYY-MM-DD oder null wenn keine erkennbar",
   "deadlineType": "Genau EINER dieser Werte oder null wenn keine Frist: ${ALLOWED_DEADLINE_TYPES.join(", ")}",
+  "recurring": "true wenn das Dokument auf eine wiederkehrende/monatliche Zahlung hindeutet (Signalwörter: Folgelastschrift, Dauerauftrag, Abo, monatlich, Mandatsreferenz, SEPA-Lastschrift mit wiederkehrendem Muster), sonst false. Reine Vermutung ist ok — der Nutzer sieht das als vorausgefüllte, änderbare Checkbox.",
   "replyDraft": "Vorschlag für ein Antwortschreiben (Deutsch, förmlicher Ton) oder null",
   "actions": [
     {
@@ -248,6 +249,7 @@ async function analyzeDocument(base64, mimeType) {
     fullText,
     deadline,
     deadlineType,
+    recurring: parsed.recurring === true,
     replyDraft: parsed.replyDraft ?? null,
     actions: normalizeActions(parsed.actions),
   };

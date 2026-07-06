@@ -826,6 +826,7 @@ export default function App() {
       replyDraft: result.replyDraft || null,
       status: "Offen",
       notes: null,
+      recurring: !!result.recurring,
       filename: result.filename || null,
     };
   }
@@ -836,6 +837,9 @@ export default function App() {
       ...pendingResult,
       ...(overrides.category !== undefined
         ? { category: overrides.category }
+        : {}),
+      ...(overrides.recurring !== undefined
+        ? { recurring: overrides.recurring }
         : {}),
     });
     const newReminders = [];
