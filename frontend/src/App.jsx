@@ -8,7 +8,9 @@ import {
   bulkInsert,
 } from "./supabase.js";
 import "./App.css";
+import { IconSearch } from "./components/icons.jsx";
 import { TAB_TIPS } from "./utils/navigation.jsx";
+import { APP_VERSION } from "./utils/legal.jsx";
 import {
   STORAGE_KEY,
   DISCLAIMER_KEY,
@@ -117,6 +119,7 @@ export default function App() {
   const contactsPrevRef = useRef([]);
   const remindersPrevRef = useRef([]);
   const eventsPrevRef = useRef([]);
+  const syncChainRef = useRef(Promise.resolve());
   const [pendingResult, setPendingResult] = useState(null);
   const [categoryFilter, setCategoryFilter] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
@@ -223,31 +226,32 @@ export default function App() {
 
   useEffect(() => {
     if (!userId || !dataReady) return;
-    const prev = docsPrevRef.current;
-    docsPrevRef.current = docs;
-    syncDiff("documents", prev, docs, userId, onSyncError);
-  }, [docs, userId, dataReady]);
+    syncChainRef.current = syncChainRef.current.then(async () => {
+      const docsPrev = docsPrevRef.current;
+      docsPrevRef.current = docs;
+      const contactsPrev = contactsPrevRef.current;
+      contactsPrevRef.current = contacts;
+      const remindersPrev = remindersPrevRef.current;
+      remindersPrevRef.current = reminders;
+      const eventsPrev = eventsPrevRef.current;
+      eventsPrevRef.current = events;
 
-  useEffect(() => {
-    if (!userId || !dataReady) return;
-    const prev = contactsPrevRef.current;
-    contactsPrevRef.current = contacts;
-    syncDiff("contacts", prev, contacts, userId, onSyncError);
-  }, [contacts, userId, dataReady]);
-
-  useEffect(() => {
-    if (!userId || !dataReady) return;
-    const prev = remindersPrevRef.current;
-    remindersPrevRef.current = reminders;
-    syncDiff("reminders", prev, reminders, userId, onSyncError);
-  }, [reminders, userId, dataReady]);
-
-  useEffect(() => {
-    if (!userId || !dataReady) return;
-    const prev = eventsPrevRef.current;
-    eventsPrevRef.current = events;
-    syncDiff("events", prev, events, userId, onSyncError);
-  }, [events, userId, dataReady]);
+      try {
+        // documents/contacts have no FK dependency on each other — sync in parallel.
+        await Promise.all([
+          syncDiff("documents", docsPrev, docs, userId, onSyncError),
+          syncDiff("contacts", contactsPrev, contacts, userId, onSyncError),
+        ]);
+        // reminders/events reference doc_id and/or contact_id — must wait for the above.
+        await Promise.all([
+          syncDiff("reminders", remindersPrev, reminders, userId, onSyncError),
+          syncDiff("events", eventsPrev, events, userId, onSyncError),
+        ]);
+      } catch (e) {
+        console.error("sync run failed:", e);
+      }
+    });
+  }, [docs, contacts, reminders, events, userId, dataReady]);
 
   useEffect(() => {
     try {
