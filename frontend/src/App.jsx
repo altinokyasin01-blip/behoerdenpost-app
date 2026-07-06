@@ -41,6 +41,7 @@ import {
   CONTACT_TYPES,
   CATEGORY_TO_CONTACT_TYPE,
   DEADLINE_TYPES,
+  TEMPLATE_TYPES,
 } from "./utils/domainConstants.js";
 import {
   googleSignIn,
@@ -115,10 +116,12 @@ export default function App() {
   const [contacts, setContacts] = useState([]);
   const [reminders, setReminders] = useState([]);
   const [events, setEvents] = useState([]);
+  const [savedTemplates, setSavedTemplates] = useState([]);
   const docsPrevRef = useRef([]);
   const contactsPrevRef = useRef([]);
   const remindersPrevRef = useRef([]);
   const eventsPrevRef = useRef([]);
+  const savedTemplatesPrevRef = useRef([]);
   const syncChainRef = useRef(Promise.resolve());
   const [pendingResult, setPendingResult] = useState(null);
   const [categoryFilter, setCategoryFilter] = useState(null);
@@ -237,12 +240,16 @@ export default function App() {
       remindersPrevRef.current = reminders;
       const eventsPrev = eventsPrevRef.current;
       eventsPrevRef.current = events;
+      const savedTemplatesPrev = savedTemplatesPrevRef.current;
+      savedTemplatesPrevRef.current = savedTemplates;
 
       try {
-        // documents/contacts have no FK dependency on each other — sync in parallel.
+        // documents/contacts/saved_templates have no FK dependency on each
+        // other — sync in parallel.
         await Promise.all([
           syncDiff("documents", docsPrev, docs, userId, onSyncError),
           syncDiff("contacts", contactsPrev, contacts, userId, onSyncError),
+          syncDiff("saved_templates", savedTemplatesPrev, savedTemplates, userId, onSyncError),
         ]);
         // reminders/events reference doc_id and/or contact_id — must wait for the above.
         await Promise.all([
@@ -253,7 +260,7 @@ export default function App() {
         console.error("sync run failed:", e);
       }
     });
-  }, [docs, contacts, reminders, events, userId, dataReady]);
+  }, [docs, contacts, reminders, events, savedTemplates, userId, dataReady]);
 
   useEffect(() => {
     try {
@@ -311,10 +318,12 @@ export default function App() {
         setContacts([]);
         setReminders([]);
         setEvents([]);
+        setSavedTemplates([]);
         docsPrevRef.current = [];
         contactsPrevRef.current = [];
         remindersPrevRef.current = [];
         eventsPrevRef.current = [];
+        savedTemplatesPrevRef.current = [];
       }
     });
     return () => sub?.subscription?.unsubscribe?.();
@@ -331,10 +340,12 @@ export default function App() {
         contactsPrevRef.current = data.contacts;
         remindersPrevRef.current = data.reminders;
         eventsPrevRef.current = data.events;
+        savedTemplatesPrevRef.current = data.savedTemplates;
         setDocs(data.docs);
         setContacts(data.contacts);
         setReminders(data.reminders);
         setEvents(data.events);
+        setSavedTemplates(data.savedTemplates);
         setDataReady(true);
 
         // Check for legacy localStorage data to migrate
@@ -1264,6 +1275,36 @@ export default function App() {
     setDocs((prev) => [doc, ...prev]);
   }
 
+  function saveResultAsTemplate() {
+    if (!templateResult) return;
+    const tpl = {
+      id: "t" + Date.now(),
+      templateType: templateResult.templateType,
+      title: templateResult.subject || templateResult.templateLabel || "Vorlage",
+      body: templateResult.body,
+    };
+    setSavedTemplates((prev) => [tpl, ...prev]);
+  }
+
+  function useSavedTemplate(tpl) {
+    // Reuse a saved template directly — no Claude call, no linked
+    // doc/recipient (that context was specific to the original case).
+    setTemplateFormType(null);
+    setTemplateResult({
+      subject: tpl.title,
+      body: tpl.body,
+      templateType: tpl.templateType,
+      templateLabel:
+        TEMPLATE_TYPES.find((t) => t.id === tpl.templateType)?.label || "Vorlage",
+      category: null,
+      sender: null,
+    });
+  }
+
+  function deleteSavedTemplate(id) {
+    setSavedTemplates((prev) => prev.filter((t) => t.id !== id));
+  }
+
   function openAddEvent(dateIso) {
     setEventFormMode("add");
     setSelectedEventId(null);
@@ -1551,7 +1592,12 @@ export default function App() {
           />
         )}
         {tab === "templates" && (
-          <TemplatesView onPick={openTemplateForm} />
+          <TemplatesView
+            onPick={openTemplateForm}
+            savedTemplates={savedTemplates}
+            onUseSavedTemplate={useSavedTemplate}
+            onDeleteSavedTemplate={deleteSavedTemplate}
+          />
         )}
         {tab === "categories" && (
           <CategoriesView
@@ -1788,6 +1834,7 @@ export default function App() {
           onClose={() => setTemplateResult(null)}
           onPrint={() => window.print()}
           onSaveAsDoc={saveTemplateAsDoc}
+          onSaveAsTemplate={saveResultAsTemplate}
         />
       )}
 

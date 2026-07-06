@@ -6,10 +6,12 @@ export default function TemplateResultModal({
   onCopy,
   onPrint,
   onSaveAsDoc,
+  onSaveAsTemplate,
   onClose,
 }) {
   const [copied, setCopied] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [savedAsTemplate, setSavedAsTemplate] = useState(false);
 
   async function handleCopy() {
     const text = `Betreff: ${result.subject}\n\n${result.body}`;
@@ -27,6 +29,12 @@ export default function TemplateResultModal({
     onSaveAsDoc();
     setSaved(true);
     setTimeout(() => setSaved(false), 1800);
+  }
+
+  function handleSaveAsTemplate() {
+    onSaveAsTemplate();
+    setSavedAsTemplate(true);
+    setTimeout(() => setSavedAsTemplate(false), 1800);
   }
 
   return (
@@ -71,6 +79,14 @@ export default function TemplateResultModal({
             disabled={saved}
           >
             {saved ? "Gespeichert" : "Als Dokument speichern"}
+          </button>
+          <button
+            type="button"
+            className="btn-secondary btn-primary-block"
+            onClick={handleSaveAsTemplate}
+            disabled={savedAsTemplate}
+          >
+            {savedAsTemplate ? "Als Vorlage gespeichert" : "Als Vorlage speichern"}
           </button>
         </div>
       </div>

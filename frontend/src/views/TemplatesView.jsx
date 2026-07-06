@@ -1,7 +1,13 @@
 import { IconChevron, IconTemplate } from "../components/icons.jsx";
+import CardMenu from "../components/CardMenu.jsx";
 import { TEMPLATE_TYPES } from "../utils/domainConstants.js";
 
-export default function TemplatesView({ onPick }) {
+export default function TemplatesView({
+  onPick,
+  savedTemplates,
+  onUseSavedTemplate,
+  onDeleteSavedTemplate,
+}) {
   return (
     <div className="view">
       <header className="view-header">
@@ -12,6 +18,41 @@ export default function TemplatesView({ onPick }) {
         </p>
       </header>
 
+      {savedTemplates && savedTemplates.length > 0 && (
+        <>
+          <h2 className="section-title">Meine Vorlagen</h2>
+          <div className="template-grid">
+            {savedTemplates.map((t) => {
+              const typeLabel = TEMPLATE_TYPES.find((x) => x.id === t.templateType)?.label;
+              return (
+                <div key={t.id} className="card template-card template-card-wrap">
+                  <button
+                    type="button"
+                    className="template-card-body"
+                    onClick={() => onUseSavedTemplate(t)}
+                  >
+                    <div className="template-icon">
+                      <IconTemplate size={22} />
+                    </div>
+                    <div className="template-body">
+                      <div className="template-title">{t.title}</div>
+                      {typeLabel && <div className="template-desc">{typeLabel}</div>}
+                    </div>
+                    <IconChevron />
+                  </button>
+                  <CardMenu
+                    items={[
+                      { label: "Löschen", onClick: () => onDeleteSavedTemplate(t.id) },
+                    ]}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+
+      <h2 className="section-title">Neue Vorlage</h2>
       <div className="template-grid">
         {TEMPLATE_TYPES.map((t) => (
           <button

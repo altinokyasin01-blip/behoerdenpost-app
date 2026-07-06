@@ -149,10 +149,29 @@ export function rowToEvent(row) {
   };
 }
 
+export function savedTemplateToRow(t, userId) {
+  return {
+    id: t.id,
+    user_id: userId,
+    template_type: t.templateType || "",
+    title: t.title || "",
+    body: t.body || "",
+  };
+}
+
+export function rowToSavedTemplate(row) {
+  return {
+    id: row.id,
+    templateType: row.template_type,
+    title: row.title,
+    body: row.body,
+  };
+}
+
 // ---- CRUD helpers ----
 
 export async function fetchAll(userId) {
-  const [docs, contacts, reminders, events] = await Promise.all([
+  const [docs, contacts, reminders, events, savedTemplates] = await Promise.all([
     supabase
       .from("documents")
       .select("*")
@@ -173,9 +192,14 @@ export async function fetchAll(userId) {
       .select("*")
       .eq("user_id", userId)
       .order("created_at", { ascending: false }),
+    supabase
+      .from("saved_templates")
+      .select("*")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false }),
   ]);
 
-  for (const r of [docs, contacts, reminders, events]) {
+  for (const r of [docs, contacts, reminders, events, savedTemplates]) {
     if (r.error) throw r.error;
   }
 
@@ -184,6 +208,7 @@ export async function fetchAll(userId) {
     contacts: (contacts.data || []).map(rowToContact),
     reminders: (reminders.data || []).map(rowToReminder),
     events: (events.data || []).map(rowToEvent),
+    savedTemplates: (savedTemplates.data || []).map(rowToSavedTemplate),
   };
 }
 
@@ -192,6 +217,7 @@ const TABLE_MAP = {
   contacts: contactToRow,
   reminders: reminderToRow,
   events: eventToRow,
+  saved_templates: savedTemplateToRow,
 };
 
 export async function syncDiff(table, prev, current, userId, onError) {
