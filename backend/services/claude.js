@@ -77,6 +77,12 @@ Ordne den deadlineType nach Art der Frist zu:
 - abgabe: Abgabefrist (Steuererklärung, Antragsformular, Nachweis)
 - sonstiges: alle anderen Fristen, wenn Kategorie unklar
 
+Das gilt genauso für wiederkehrende/monatliche Rechnungen (Abo, Mobilfunk,
+Strom, Miete u.ä.) — nicht nur für einmalige Bescheide. Suche nach
+Formulierungen wie "zahlbar bis", "fällig am", "Fälligkeitsdatum" oder dem
+Termin des Lastschrifteinzugs und setze dieses Datum als "deadline" mit
+deadlineType "zahlung", auch wenn sich die Rechnung monatlich wiederholt.
+
 Regeln für "actions":
 - Mindestens 1, maximal 6 Einträge — sortiert nach priority (high zuerst).
 - Entscheide selbst, welche Aktionen für dieses konkrete Dokument sinnvoll sind.
@@ -89,10 +95,18 @@ Regeln für "actions":
                      "street": "Straße + Hausnummer falls erkennbar",
                      "zip": "Postleitzahl falls erkennbar",
                      "city": "Stadt/Ort falls erkennbar",
+                     "iban": "IBAN falls im Dokument erkennbar (z.B. im Briefkopf, bei Überweisungs- oder Lastschriftangaben)",
+                     "bic": "BIC/SWIFT-Code falls erkennbar",
                      "website": "URL falls erkennbar",
                      "notes": "Weitere relevante Infos die nicht in andere Felder passen: Ansprechpartner, Abteilung, Öffnungszeiten, Aktenzeichen, Kundennummer, USt-ID, Handelsregister etc."
                    }
                  Felder ohne erkennbaren Wert einfach weglassen. Der "name" ist Pflicht.
+                 street/zip/city bilden zusammen eine vollständige Postadresse — erkenne
+                 sie als Einheit aus dem Absenderblock oder einer Adressangabe im Dokument,
+                 nicht nur die Straße. Wenn PLZ und Ort im Dokument stehen (auch wenn sie in
+                 einer eigenen Zeile stehen), gib beide mit an statt nur "street" zu füllen.
+                 Erfinde aber nichts — wenn PLZ oder Ort im Dokument nicht vorkommen, lass
+                 die Felder leer.
   * "reminder"  — value = ISO-Datum (YYYY-MM-DD), an dem erinnert werden soll
   * "amount"    — value = Zahl in Euro (Punkt als Dezimaltrennzeichen, kein Währungssymbol)
   * "deadline"  — value = ISO-Datum der Frist (YYYY-MM-DD)
@@ -354,6 +368,8 @@ function normalizeContactValue(raw) {
     "street",
     "zip",
     "city",
+    "iban",
+    "bic",
     "website",
     "notes",
   ]) {

@@ -900,6 +900,8 @@ export default function App() {
             street: info.street || "",
             zip: info.zip || "",
             city: info.city || "",
+            iban: info.iban || "",
+            bic: info.bic || "",
             notes: notesParts.join("\n\n"),
           };
         }
