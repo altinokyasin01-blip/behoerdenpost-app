@@ -1,0 +1,16 @@
+{
+  "name": "behoerdenpost-app",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Root tooling only (linting). App code lives in frontend/ and backend/.",
+  "scripts": {
+    "lint": "eslint ."
+  },
+  "devDependencies": {
+    "eslint": "^9.17.0",
+    "eslint-plugin-react": "^7.37.2",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^15.14.0"
+  }
+}
