@@ -122,6 +122,7 @@ export default function App() {
   const syncChainRef = useRef(Promise.resolve());
   const [pendingResult, setPendingResult] = useState(null);
   const [categoryFilter, setCategoryFilter] = useState(null);
+  const [scanCategoryPrefill, setScanCategoryPrefill] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
   const [selectedContactId, setSelectedContactId] = useState(null);
   const [contactFormOpen, setContactFormOpen] = useState(false);
@@ -918,6 +919,7 @@ export default function App() {
       setEvents((prev) => [...newEvents, ...prev]);
     }
     setPendingResult(null);
+    setScanCategoryPrefill(null);
 
     if (contactPrefill) {
       setContactFormMode("add");
@@ -938,6 +940,7 @@ export default function App() {
     if (!pendingResult) return;
     setDocs((prev) => [buildDocFromResult(pendingResult), ...prev]);
     setPendingResult(null);
+    setScanCategoryPrefill(null);
     celebrateFirstScan();
   }
 
@@ -1305,7 +1308,13 @@ export default function App() {
 
   function navigate(nextTab) {
     if (nextTab !== "archive") setCategoryFilter(null);
+    setScanCategoryPrefill(null);
     setTab(nextTab);
+  }
+
+  function scanWithCategory(category) {
+    setScanCategoryPrefill(category);
+    setTab("scan"); // bypass navigate() — it would clear the prefill we just set
   }
 
   function openAddContact() {
@@ -1527,12 +1536,15 @@ export default function App() {
         {tab === "categories" && (
           <CategoriesView
             docs={docs}
+            contacts={contacts}
             existingCategories={existingCategories}
             onNav={navigate}
             onOpenDoc={setSelectedId}
+            onOpenContact={setSelectedContactId}
             onUpdateDocCategory={updateDocCategory}
             onRenameCategory={renameCategory}
             onRemoveCategory={removeCategory}
+            onScanWithCategory={scanWithCategory}
           />
         )}
         {tab === "contacts" && (
@@ -1731,6 +1743,7 @@ export default function App() {
           result={pendingResult}
           isFirstScan={!tooltipsSeen.has("first_scan_done")}
           existingCategories={existingCategories}
+          categoryPrefill={scanCategoryPrefill}
           onConfirm={handlePostScanConfirm}
           onSkip={handlePostScanSkip}
         />

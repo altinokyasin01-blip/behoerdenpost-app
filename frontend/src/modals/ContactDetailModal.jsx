@@ -1,13 +1,9 @@
 import Modal from "../components/Modal.jsx";
 import { formatDate } from "../utils/format.js";
+import { getDocsForContact } from "../utils/insights.js";
 
 export default function ContactDetailModal({ contact, docs, onEdit, onDelete, onClose }) {
-  const linkedDocs = docs.filter(
-    (d) =>
-      contact.name &&
-      d.sender &&
-      d.sender.toLowerCase().includes(contact.name.toLowerCase())
-  );
+  const linkedDocs = getDocsForContact(docs, contact);
 
   const fields = [
     { label: "IBAN", value: contact.iban },

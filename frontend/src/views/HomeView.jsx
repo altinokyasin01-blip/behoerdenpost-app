@@ -10,6 +10,7 @@ import {
   formatDate,
   formatAmount,
 } from "../utils/format.js";
+import { getOpenDeadlines, getOpenAmounts } from "../utils/insights.js";
 
 export default function HomeView({
   docs,
@@ -26,17 +27,13 @@ export default function HomeView({
 }) {
   const [deadlineFilter, setDeadlineFilter] = useState("all");
 
-  const allOpenDeadlines = docs
-    .filter((d) => d.deadline && d.status !== "Erledigt")
-    .sort((a, b) => a.deadline.localeCompare(b.deadline));
+  const allOpenDeadlines = getOpenDeadlines(docs);
 
   const openDeadlines = allOpenDeadlines.filter(
     (d) => deadlineFilter === "all" || (d.deadlineType || "sonstiges") === deadlineFilter
   );
 
-  const pendingPayments = docs
-    .filter((d) => d.amount != null && d.status !== "Erledigt")
-    .sort((a, b) => (a.deadline || "9").localeCompare(b.deadline || "9"));
+  const pendingPayments = getOpenAmounts(docs);
   const paymentsTotal = pendingPayments.reduce(
     (sum, d) => sum + (typeof d.amount === "number" ? d.amount : 0),
     0

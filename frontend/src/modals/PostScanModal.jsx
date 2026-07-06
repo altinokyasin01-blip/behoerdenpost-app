@@ -48,6 +48,7 @@ export default function PostScanModal({
   result,
   isFirstScan,
   existingCategories,
+  categoryPrefill,
   onConfirm,
   onSkip,
 }) {
@@ -61,7 +62,8 @@ export default function PostScanModal({
     return map;
   });
   const [categoryDraft, setCategoryDraft] = useState(
-    result.category || "Sonstiges"
+    // Explicit user context (scanned from a category page) outranks Claude's guess.
+    categoryPrefill || result.category || "Sonstiges"
   );
 
   function toggle(i) {
