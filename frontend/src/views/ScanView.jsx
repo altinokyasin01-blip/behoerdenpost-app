@@ -32,15 +32,18 @@ export default function ScanView({ docs, isFirstScan, onScanned, onOpenDoc }) {
         }),
         detectQrCodes(file, file.type),
       ]);
+      // TEMP DIAGNOSTIC LOGGING — remove once the production no-QR-section
+      // bug is root-caused. Logged unconditionally, before the res.ok check,
+      // so it always fires regardless of whether /api/analyze succeeded.
+      console.log("[ScanView] detectQrCodes() returned:", qrCodes);
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || `HTTP ${res.status}`);
       }
       const result = await res.json();
-      // TEMP DIAGNOSTIC LOGGING — remove once the production no-QR-section
-      // bug is root-caused.
-      console.log("[ScanView] merging qrCodes into scan result:", qrCodes);
-      onScanned({ ...result, filename: file.name, qrCodes });
+      const merged = { ...result, filename: file.name, qrCodes };
+      console.log("[ScanView] merged scan result before onScanned:", merged);
+      onScanned(merged);
     } catch (e) {
       setError(e.message);
     } finally {

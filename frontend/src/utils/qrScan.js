@@ -16,6 +16,14 @@ const IMAGE_MIME_TYPES = new Set([
 function decodeCanvas(canvas, jsQR) {
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
   const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  // TEMP DIAGNOSTIC LOGGING — checks whether the canvas actually has pixel
+  // data (e.g. createImageBitmap/PDF render silently producing a 0x0 or
+  // blank canvas would explain "no error, but also no QR found").
+  console.log("[qrScan] decodeCanvas:", {
+    width: canvas.width,
+    height: canvas.height,
+    imageDataBytes: imageData.data.length,
+  });
   const code = jsQR(imageData.data, imageData.width, imageData.height, {
     inversionAttempts: "attemptBoth",
   });
