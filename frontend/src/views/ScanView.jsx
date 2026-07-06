@@ -37,6 +37,9 @@ export default function ScanView({ docs, isFirstScan, onScanned, onOpenDoc }) {
         throw new Error(data.error || `HTTP ${res.status}`);
       }
       const result = await res.json();
+      // TEMP DIAGNOSTIC LOGGING — remove once the production no-QR-section
+      // bug is root-caused.
+      console.log("[ScanView] merging qrCodes into scan result:", qrCodes);
       onScanned({ ...result, filename: file.name, qrCodes });
     } catch (e) {
       setError(e.message);

@@ -58,19 +58,46 @@ async function detectQrInPdfFile(file, jsQR) {
 // an empty array. No timeout/race against slowness — callers should await
 // this fully (e.g. via Promise.all) even for large multi-page PDFs.
 export async function detectQrCodes(file, mimeType) {
+  // TEMP DIAGNOSTIC LOGGING — remove once the production no-QR-section bug
+  // is root-caused. Split per path (script load / PDF / image) so the
+  // failure point is visible in the browser console instead of being
+  // swallowed by a single catch-all.
+  console.log("[qrScan] detectQrCodes called", {
+    mimeType,
+    fileName: file?.name,
+    fileSize: file?.size,
+  });
+
+  let jsQR;
   try {
-    const jsQR = await getJsQR();
-    let found;
-    if (mimeType === "application/pdf") {
-      found = await detectQrInPdfFile(file, jsQR);
-    } else if (IMAGE_MIME_TYPES.has(mimeType)) {
-      found = await detectQrInImageFile(file, jsQR);
-    } else {
-      return [];
-    }
-    return [...new Set(found)];
+    jsQR = await getJsQR();
   } catch (e) {
-    console.warn("QR detection failed:", e.message);
+    console.error("[qrScan] getJsQR() failed to load jsQR script:", e);
     return [];
   }
+
+  if (mimeType === "application/pdf") {
+    try {
+      const found = await detectQrInPdfFile(file, jsQR);
+      console.log(`[qrScan] PDF path finished, found ${found.length} code(s)`, found);
+      return [...new Set(found)];
+    } catch (e) {
+      console.error("[qrScan] PDF QR detection failed:", e);
+      return [];
+    }
+  }
+
+  if (IMAGE_MIME_TYPES.has(mimeType)) {
+    try {
+      const found = await detectQrInImageFile(file, jsQR);
+      console.log(`[qrScan] Image path finished, found ${found.length} code(s)`, found);
+      return found;
+    } catch (e) {
+      console.error("[qrScan] Image QR detection failed:", e);
+      return [];
+    }
+  }
+
+  console.log("[qrScan] unsupported mimetype for QR detection, skipping:", mimeType);
+  return [];
 }
