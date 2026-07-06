@@ -1494,9 +1494,11 @@ export default function App() {
         {tab === "home" && (
           <HomeView
             docs={docs}
+            contacts={contacts}
             reminders={reminders}
             onNav={navigate}
             onOpenDoc={setSelectedId}
+            onOpenContact={setSelectedContactId}
             onOpenReminder={setSelectedReminderId}
             onAddReminder={() => openAddReminder()}
             onAddDeadline={openManualDeadline}

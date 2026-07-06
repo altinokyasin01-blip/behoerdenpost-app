@@ -3,6 +3,7 @@ import { IconCamera, IconChevron } from "../components/icons.jsx";
 import { CategoryEditor } from "../components/CategoryChip.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import CardMenu from "../components/CardMenu.jsx";
+import ShowMoreButton from "../components/ShowMoreButton.jsx";
 import CategoryRenameModal from "../modals/CategoryRenameModal.jsx";
 import { categorySymbol } from "../utils/domainConstants.js";
 import { daysUntil, deadlineLevel, formatDate, formatAmount } from "../utils/format.js";
@@ -29,6 +30,10 @@ export default function CategoriesView({
   const [renamingCategory, setRenamingCategory] = useState(null);
   const [editingTitle, setEditingTitle] = useState(false);
   const [editingDocId, setEditingDocId] = useState(null);
+  const [showAllCatDeadlines, setShowAllCatDeadlines] = useState(false);
+  const [showAllCatAmounts, setShowAllCatAmounts] = useState(false);
+  const [showAllCatContacts, setShowAllCatContacts] = useState(false);
+  const [showAllCatDocs, setShowAllCatDocs] = useState(false);
 
   const groups = useMemo(() => getCategoryGroups(docs), [docs]);
 
@@ -141,7 +146,7 @@ export default function CategoriesView({
           <div className="empty">Keine offenen Fristen.</div>
         ) : (
           <div className="linked-list">
-            {catOpenDeadlines.map((d) => {
+            {(showAllCatDeadlines ? catOpenDeadlines : catOpenDeadlines.slice(0, 3)).map((d) => {
               const days = daysUntil(d.deadline);
               const level = deadlineLevel(days);
               return (
@@ -161,6 +166,12 @@ export default function CategoriesView({
             })}
           </div>
         )}
+        <ShowMoreButton
+          total={catOpenDeadlines.length}
+          visibleCount={3}
+          expanded={showAllCatDeadlines}
+          onToggle={() => setShowAllCatDeadlines((v) => !v)}
+        />
 
         <h2 className="section-title">Offene Beträge</h2>
         {catOpenAmounts.length === 0 ? (
@@ -177,7 +188,7 @@ export default function CategoriesView({
               </div>
             </div>
             <div className="payments-list">
-              {catOpenAmounts.map((d) => (
+              {(showAllCatAmounts ? catOpenAmounts : catOpenAmounts.slice(0, 3)).map((d) => (
                 <button
                   key={d.id}
                   type="button"
@@ -197,13 +208,19 @@ export default function CategoriesView({
             </div>
           </div>
         )}
+        <ShowMoreButton
+          total={catOpenAmounts.length}
+          visibleCount={3}
+          expanded={showAllCatAmounts}
+          onToggle={() => setShowAllCatAmounts((v) => !v)}
+        />
 
         <h2 className="section-title">Verknüpfte Kontakte</h2>
         {catContacts.length === 0 ? (
           <div className="empty">Keine verknüpften Kontakte.</div>
         ) : (
           <div className="linked-list">
-            {catContacts.map((c) => (
+            {(showAllCatContacts ? catContacts : catContacts.slice(0, 3)).map((c) => (
               <button
                 key={c.id}
                 type="button"
@@ -216,13 +233,19 @@ export default function CategoriesView({
             ))}
           </div>
         )}
+        <ShowMoreButton
+          total={catContacts.length}
+          visibleCount={3}
+          expanded={showAllCatContacts}
+          onToggle={() => setShowAllCatContacts((v) => !v)}
+        />
 
         <h2 className="section-title">Alle Dokumente</h2>
         <div className="doc-list">
           {catDocs.length === 0 && (
             <div className="empty">Keine Dokumente in dieser Kategorie.</div>
           )}
-          {catDocs.map((d) => {
+          {(showAllCatDocs ? catDocs : catDocs.slice(0, 5)).map((d) => {
             if (editingDocId === d.id) {
               return (
                 <div key={d.id} className="card doc-card doc-card-editing">
@@ -271,6 +294,12 @@ export default function CategoriesView({
             );
           })}
         </div>
+        <ShowMoreButton
+          total={catDocs.length}
+          visibleCount={5}
+          expanded={showAllCatDocs}
+          onToggle={() => setShowAllCatDocs((v) => !v)}
+        />
       </div>
     );
   }

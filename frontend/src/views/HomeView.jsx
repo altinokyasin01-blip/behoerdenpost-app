@@ -2,7 +2,8 @@ import { useState } from "react";
 import { IconCamera, IconChevron } from "../components/icons.jsx";
 import CardMenu from "../components/CardMenu.jsx";
 import DeadlineTypeBadge from "../components/DeadlineTypeBadge.jsx";
-import { DEADLINE_TYPES, DEADLINE_TYPE_LABEL } from "../utils/domainConstants.js";
+import ShowMoreButton from "../components/ShowMoreButton.jsx";
+import { DEADLINE_TYPES, DEADLINE_TYPE_LABEL, categorySymbol } from "../utils/domainConstants.js";
 import {
   daysUntil,
   deadlineLevel,
@@ -10,13 +11,43 @@ import {
   formatDate,
   formatAmount,
 } from "../utils/format.js";
-import { getOpenDeadlines, getOpenAmounts } from "../utils/insights.js";
+import {
+  getOpenDeadlines,
+  getOpenAmounts,
+  getRecurringPaymentDocIds,
+  getRecentDocs,
+  getCategoryGroups,
+  getDocsForContact,
+} from "../utils/insights.js";
+
+// One-sentence, client-computed status line — no API call. Mirrors the
+// "3 offene Fristen, davon 1 in den nächsten 3 Tagen" example exactly when
+// there's an urgent one, and degrades gracefully otherwise.
+function buildStatusSummary(openDeadlines, pendingPayments) {
+  const total = openDeadlines.length;
+  if (total === 0) {
+    if (pendingPayments.length > 0) {
+      return `Keine offenen Fristen, aber ${pendingPayments.length} offene Ausgabe${
+        pendingPayments.length === 1 ? "" : "n"
+      }.`;
+    }
+    return "Keine offenen Fristen — alles im grünen Bereich.";
+  }
+  const urgent = openDeadlines.filter((d) => daysUntil(d.deadline) <= 3).length;
+  const base = `${total} offene Frist${total === 1 ? "" : "en"}`;
+  if (urgent === 0) {
+    return `${base}, keine davon in den nächsten 3 Tagen fällig.`;
+  }
+  return `${base}, davon ${urgent} in den nächsten 3 Tagen.`;
+}
 
 export default function HomeView({
   docs,
+  contacts,
   reminders,
   onNav,
   onOpenDoc,
+  onOpenContact,
   onOpenReminder,
   onAddReminder,
   onAddDeadline,
@@ -26,6 +57,9 @@ export default function HomeView({
   onOpenAppeal,
 }) {
   const [deadlineFilter, setDeadlineFilter] = useState("all");
+  const [showAllDeadlines, setShowAllDeadlines] = useState(false);
+  const [showAllPayments, setShowAllPayments] = useState(false);
+  const [showAllReminders, setShowAllReminders] = useState(false);
 
   const allOpenDeadlines = getOpenDeadlines(docs);
 
@@ -38,8 +72,18 @@ export default function HomeView({
     (sum, d) => sum + (typeof d.amount === "number" ? d.amount : 0),
     0
   );
+  const recurringDocIds = getRecurringPaymentDocIds(docs);
 
-  const openCount = docs.filter((d) => d.status === "Offen").length;
+  const statusSummary = buildStatusSummary(allOpenDeadlines, pendingPayments);
+  const recentDocs = getRecentDocs(docs, 5);
+  const topCategories = getCategoryGroups(docs).slice(0, 3);
+  const topContacts = contacts
+    .map((c) => ({ contact: c, count: getDocsForContact(docs, c).length }))
+    .filter((x) => x.count > 0)
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 3)
+    .map((x) => x.contact);
+
   const openReminders = (reminders || [])
     .filter((r) => !r.done)
     .sort((a, b) => (a.date || "").localeCompare(b.date || ""));
@@ -56,10 +100,7 @@ export default function HomeView({
     <div className="view">
       <header className="view-header">
         <h1>Guten Tag</h1>
-        <p className="lead">
-          Sie haben {openCount} unerledigte{openCount === 1 ? "n" : ""} Vorgang
-          {openCount === 1 ? "" : "e"}.
-        </p>
+        <p className="lead">{statusSummary}</p>
       </header>
 
       <section className="stats">
@@ -99,7 +140,7 @@ export default function HomeView({
         {openDeadlines.length === 0 && (
           <div className="empty">Keine offenen Fristen.</div>
         )}
-        {openDeadlines.map((d) => {
+        {(showAllDeadlines ? openDeadlines : openDeadlines.slice(0, 3)).map((d) => {
           const days = daysUntil(d.deadline);
           const level = deadlineLevel(days);
           const isAppealCase = d.deadlineType === "widerspruch";
@@ -178,46 +219,111 @@ export default function HomeView({
           );
         })}
       </div>
+      <ShowMoreButton
+        total={openDeadlines.length}
+        visibleCount={3}
+        expanded={showAllDeadlines}
+        onToggle={() => setShowAllDeadlines((v) => !v)}
+      />
 
       {pendingPayments.length > 0 && (
         <>
-          <h2 className="section-title">Anstehende Ausgaben</h2>
-          <div className="card payments-card">
-            <div className="payments-total">
-              <div className="payments-total-label">Summe offen</div>
-              <div className="payments-total-value">
-                {formatAmount(paymentsTotal)}
-              </div>
-              <div className="payments-total-sub">
-                {pendingPayments.length} Posten
-              </div>
-            </div>
-            <div className="payments-list">
-              {pendingPayments.map((d) => {
-                const days = d.deadline ? daysUntil(d.deadline) : null;
-                const level = days != null ? deadlineLevel(days) : "gray";
-                return (
-                  <button
-                    key={d.id}
-                    type="button"
-                    className="payment-item"
-                    onClick={() => onOpenDoc(d.id)}
-                  >
-                    <div className="payment-body">
-                      <div className="payment-title">{d.title}</div>
-                      <div className={`payment-meta days-${level}`}>
-                        {d.deadline
-                          ? `Fällig ${formatDate(d.deadline)}`
-                          : "Ohne Frist"}
-                        {d.sender && ` · ${d.sender}`}
-                      </div>
-                    </div>
-                    <div className="payment-amount">{formatAmount(d.amount)}</div>
-                  </button>
-                );
-              })}
-            </div>
+          <div className="section-title-row">
+            <h2 className="section-title section-title-inline">Anstehende Ausgaben</h2>
+            <span className="detail-muted">{formatAmount(paymentsTotal)} offen</span>
           </div>
+          <div className="linked-list">
+            {(showAllPayments ? pendingPayments : pendingPayments.slice(0, 3)).map((d) => {
+              const days = d.deadline ? daysUntil(d.deadline) : null;
+              const level = days != null ? deadlineLevel(days) : "gray";
+              const recurring = recurringDocIds.has(d.id);
+              return (
+                <button
+                  key={d.id}
+                  type="button"
+                  className="linked-item linked-clickable"
+                  onClick={() => onOpenDoc(d.id)}
+                >
+                  <div className="linked-title">
+                    {d.title}
+                    {recurring && (
+                      <span className="badge badge-neutral" style={{ marginLeft: 6 }}>
+                        Wiederkehrend
+                      </span>
+                    )}
+                  </div>
+                  <div className={`linked-meta days-${level}`}>
+                    {d.deadline ? `Fällig ${formatDate(d.deadline)}` : "Ohne Frist"}
+                    {d.sender && ` · ${d.sender}`}
+                    {" · "}
+                    {formatAmount(d.amount)}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+          <ShowMoreButton
+            total={pendingPayments.length}
+            visibleCount={3}
+            expanded={showAllPayments}
+            onToggle={() => setShowAllPayments((v) => !v)}
+          />
+        </>
+      )}
+
+      <h2 className="section-title">Letzte Aktivität</h2>
+      {recentDocs.length === 0 ? (
+        <div className="empty">Noch keine Dokumente gescannt.</div>
+      ) : (
+        <div className="linked-list">
+          {recentDocs.map((d) => (
+            <button
+              key={d.id}
+              type="button"
+              className="linked-item linked-clickable"
+              onClick={() => onOpenDoc(d.id)}
+            >
+              <div className="linked-title">{d.title}</div>
+              <div className="linked-meta">
+                {formatDate(d.date)}
+                {d.sender && ` · ${d.sender}`}
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {(topCategories.length > 0 || topContacts.length > 0) && (
+        <>
+          <h2 className="section-title">Schnellzugriff</h2>
+          {topCategories.length > 0 && (
+            <div className="filter-pills">
+              {topCategories.map((g) => (
+                <button
+                  key={g.name}
+                  type="button"
+                  className="pill"
+                  onClick={() => onNav("categories")}
+                >
+                  {categorySymbol(g.name)} {g.name}
+                </button>
+              ))}
+            </div>
+          )}
+          {topContacts.length > 0 && (
+            <div className="filter-pills">
+              {topContacts.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  className="pill"
+                  onClick={() => onOpenContact(c.id)}
+                >
+                  {c.name}
+                </button>
+              ))}
+            </div>
+          )}
         </>
       )}
 
@@ -235,7 +341,7 @@ export default function HomeView({
         {openReminders.length === 0 && (
           <div className="empty">Keine offenen Erinnerungen.</div>
         )}
-        {openReminders.map((r) => {
+        {(showAllReminders ? openReminders : openReminders.slice(0, 3)).map((r) => {
           const days = daysUntil(r.date);
           const level = deadlineLevel(days);
           return (
@@ -269,6 +375,12 @@ export default function HomeView({
           );
         })}
       </div>
+      <ShowMoreButton
+        total={openReminders.length}
+        visibleCount={3}
+        expanded={showAllReminders}
+        onToggle={() => setShowAllReminders((v) => !v)}
+      />
 
       <h2 className="section-title">Schnellaktion</h2>
       <button className="card action-card" onClick={() => onNav("scan")}>
