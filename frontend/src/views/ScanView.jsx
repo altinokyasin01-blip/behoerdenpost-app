@@ -4,6 +4,7 @@ import { IconUpload, IconCamera, IconQr } from "../components/icons.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import QrScannerModal from "../modals/QrScannerModal.jsx";
 import { formatDate } from "../utils/format.js";
+import { detectQrCodes } from "../utils/qrScan.js";
 
 export default function ScanView({ docs, isFirstScan, onScanned, onOpenDoc }) {
   const [dragging, setDragging] = useState(false);
@@ -21,16 +22,22 @@ export default function ScanView({ docs, isFirstScan, onScanned, onOpenDoc }) {
     try {
       const formData = new FormData();
       formData.append("document", file);
-      const res = await fetch(`${API_BASE}/api/analyze`, {
-        method: "POST",
-        body: formData,
-      });
+      // Promise.all waits for both, even if QR detection (large multi-page
+      // PDF) takes longer than the Claude round-trip — no race/timeout that
+      // could silently drop codes on slow documents.
+      const [res, qrCodes] = await Promise.all([
+        fetch(`${API_BASE}/api/analyze`, {
+          method: "POST",
+          body: formData,
+        }),
+        detectQrCodes(file, file.type),
+      ]);
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || `HTTP ${res.status}`);
       }
       const result = await res.json();
-      onScanned({ ...result, filename: file.name });
+      onScanned({ ...result, filename: file.name, qrCodes });
     } catch (e) {
       setError(e.message);
     } finally {

@@ -76,6 +76,32 @@ export default function DocumentModal({
           </section>
         )}
 
+        {doc.qrCodes?.length > 0 && (
+          <section className="detail-section">
+            <h3 className="detail-heading">
+              {doc.qrCodes.length === 1 ? "QR-Code" : `QR-Codes (${doc.qrCodes.length})`}
+            </h3>
+            {doc.qrCodes.map((content, i) => {
+              const isUrl = /^https?:\/\//i.test(content.trim());
+              const looksLikeGiroCode = content.startsWith("BCD");
+              return (
+                <div key={i} className="qr-code-entry">
+                  {looksLikeGiroCode && (
+                    <div className="detail-muted">Sieht aus wie ein GiroCode (SEPA-QR)</div>
+                  )}
+                  {isUrl ? (
+                    <a href={content} target="_blank" rel="noopener noreferrer">
+                      {content}
+                    </a>
+                  ) : (
+                    <pre className="code-block">{content}</pre>
+                  )}
+                </div>
+              );
+            })}
+          </section>
+        )}
+
         {doc.replyDraft && (
           <section className="detail-section">
             <div className="detail-heading-row">

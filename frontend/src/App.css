@@ -1200,6 +1200,14 @@ input {
   line-height: 1.5;
 }
 
+.qr-code-entry {
+  margin-bottom: 10px;
+}
+
+.qr-code-entry:last-child {
+  margin-bottom: 0;
+}
+
 .copy-btn {
   padding: 5px 12px;
   border-radius: 999px;

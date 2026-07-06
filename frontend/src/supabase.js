@@ -35,6 +35,7 @@ export function docToRow(doc, userId) {
     notes: doc.notes || null,
     manual: !!doc.manual,
     recurring: !!doc.recurring,
+    qr_codes: Array.isArray(doc.qrCodes) ? doc.qrCodes : [],
     filename: doc.filename || null,
     scan_date: doc.date || null,
   };
@@ -57,6 +58,7 @@ export function rowToDoc(row) {
     notes: row.notes,
     manual: !!row.manual,
     recurring: !!row.recurring,
+    qrCodes: Array.isArray(row.qr_codes) ? row.qr_codes : [],
     filename: row.filename,
     date: row.scan_date || (row.created_at ? row.created_at.slice(0, 10) : null),
   };

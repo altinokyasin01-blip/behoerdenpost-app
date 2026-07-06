@@ -839,6 +839,7 @@ export default function App() {
       status: "Offen",
       notes: null,
       recurring: !!result.recurring,
+      qrCodes: Array.isArray(result.qrCodes) ? result.qrCodes : [],
       filename: result.filename || null,
     };
   }
