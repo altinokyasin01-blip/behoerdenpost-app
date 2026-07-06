@@ -122,6 +122,7 @@ export default function App() {
   const syncChainRef = useRef(Promise.resolve());
   const [pendingResult, setPendingResult] = useState(null);
   const [categoryFilter, setCategoryFilter] = useState(null);
+  const [selectedCategory, setSelectedCategory] = useState(null);
   const [scanCategoryPrefill, setScanCategoryPrefill] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
   const [selectedContactId, setSelectedContactId] = useState(null);
@@ -1232,7 +1233,13 @@ export default function App() {
     }
     const result = await res.json();
     setTemplateFormType(null);
-    setTemplateResult(result);
+    setTemplateResult({
+      ...result,
+      // Inherited from the reference doc/recipient chosen in the form — Claude
+      // never sees or returns these, it's pure client-side bookkeeping.
+      category: payload.linkedDoc?.category || null,
+      sender: payload.recipient?.name || payload.linkedDoc?.sender || null,
+    });
   }
 
   function saveTemplateAsDoc() {
@@ -1240,8 +1247,8 @@ export default function App() {
     const doc = {
       id: "d" + Date.now(),
       title: templateResult.subject || templateResult.templateLabel || "Anschreiben",
-      sender: userName || "",
-      category: "Sonstiges",
+      sender: templateResult.sender || "",
+      category: templateResult.category || "Sonstiges",
       date: isoLocal(TODAY),
       deadline: null,
       deadlineType: null,
@@ -1312,6 +1319,7 @@ export default function App() {
 
   function navigate(nextTab) {
     if (nextTab !== "archive") setCategoryFilter(null);
+    if (nextTab !== "categories") setSelectedCategory(null);
     setScanCategoryPrefill(null);
     setTab(nextTab);
   }
@@ -1319,6 +1327,11 @@ export default function App() {
   function scanWithCategory(category) {
     setScanCategoryPrefill(category);
     setTab("scan"); // bypass navigate() — it would clear the prefill we just set
+  }
+
+  function openCategory(category) {
+    setSelectedCategory(category);
+    setTab("categories"); // bypass navigate() — it would clear the selection we just set
   }
 
   function openAddContact() {
@@ -1503,6 +1516,7 @@ export default function App() {
             onNav={navigate}
             onOpenDoc={setSelectedId}
             onOpenContact={setSelectedContactId}
+            onOpenCategory={openCategory}
             onOpenReminder={setSelectedReminderId}
             onAddReminder={() => openAddReminder()}
             onAddDeadline={openManualDeadline}
@@ -1544,6 +1558,8 @@ export default function App() {
             docs={docs}
             contacts={contacts}
             existingCategories={existingCategories}
+            selectedCategory={selectedCategory}
+            onSelectCategory={setSelectedCategory}
             onNav={navigate}
             onOpenDoc={setSelectedId}
             onOpenContact={setSelectedContactId}

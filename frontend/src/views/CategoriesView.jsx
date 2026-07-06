@@ -11,6 +11,7 @@ import {
   getCategoryGroups,
   getOpenDeadlines,
   getOpenAmounts,
+  getRecurringPaymentDocIds,
   findContactsForSender,
 } from "../utils/insights.js";
 
@@ -18,6 +19,8 @@ export default function CategoriesView({
   docs,
   contacts,
   existingCategories,
+  selectedCategory,
+  onSelectCategory,
   onNav,
   onOpenDoc,
   onOpenContact,
@@ -26,7 +29,6 @@ export default function CategoriesView({
   onRemoveCategory,
   onScanWithCategory,
 }) {
-  const [selectedCategory, setSelectedCategory] = useState(null);
   const [renamingCategory, setRenamingCategory] = useState(null);
   const [editingTitle, setEditingTitle] = useState(false);
   const [editingDocId, setEditingDocId] = useState(null);
@@ -34,6 +36,7 @@ export default function CategoriesView({
   const [showAllCatAmounts, setShowAllCatAmounts] = useState(false);
   const [showAllCatContacts, setShowAllCatContacts] = useState(false);
   const [showAllCatDocs, setShowAllCatDocs] = useState(false);
+  const [catPaymentsFilter, setCatPaymentsFilter] = useState("all");
 
   const groups = useMemo(() => getCategoryGroups(docs), [docs]);
 
@@ -44,7 +47,13 @@ export default function CategoriesView({
     );
     const catOpenDeadlines = getOpenDeadlines(catDocs);
     const catOpenAmounts = getOpenAmounts(catDocs);
-    const catOpenAmountsTotal = catOpenAmounts.reduce(
+    const catRecurringDocIds = getRecurringPaymentDocIds(catDocs);
+    const filteredCatAmounts = catOpenAmounts.filter((d) => {
+      if (catPaymentsFilter === "all") return true;
+      const isRecurring = catRecurringDocIds.has(d.id);
+      return catPaymentsFilter === "recurring" ? isRecurring : !isRecurring;
+    });
+    const catOpenAmountsTotal = filteredCatAmounts.reduce(
       (sum, d) => sum + (typeof d.amount === "number" ? d.amount : 0),
       0
     );
@@ -67,7 +76,7 @@ export default function CategoriesView({
           type="button"
           className="btn-back"
           onClick={() => {
-            setSelectedCategory(null);
+            onSelectCategory(null);
             setEditingTitle(false);
             setEditingDocId(null);
           }}
@@ -84,7 +93,7 @@ export default function CategoriesView({
               )}
               onChange={(newName) => {
                 onRenameCategory(selectedCategory, newName);
-                setSelectedCategory(newName);
+                onSelectCategory(newName);
                 setEditingTitle(false);
               }}
               onCancel={() => setEditingTitle(false)}
@@ -174,8 +183,30 @@ export default function CategoriesView({
         />
 
         <h2 className="section-title">Offene Beträge</h2>
-        {catOpenAmounts.length === 0 ? (
-          <div className="empty">Keine offenen Beträge.</div>
+        {catOpenAmounts.length > 0 && (
+          <div className="filter-pills">
+            {[
+              { id: "all", label: "Alle" },
+              { id: "recurring", label: "Wiederkehrend" },
+              { id: "once", label: "Einmalig" },
+            ].map((f) => (
+              <button
+                key={f.id}
+                type="button"
+                className={`pill ${catPaymentsFilter === f.id ? "active" : ""}`}
+                onClick={() => setCatPaymentsFilter(f.id)}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+        )}
+        {filteredCatAmounts.length === 0 ? (
+          <div className="empty">
+            {catOpenAmounts.length === 0
+              ? "Keine offenen Beträge."
+              : "Keine Einträge für diesen Filter."}
+          </div>
         ) : (
           <div className="card payments-card">
             <div className="payments-total">
@@ -184,11 +215,11 @@ export default function CategoriesView({
                 {formatAmount(catOpenAmountsTotal)}
               </div>
               <div className="payments-total-sub">
-                {catOpenAmounts.length} Posten
+                {filteredCatAmounts.length} Posten
               </div>
             </div>
             <div className="payments-list">
-              {(showAllCatAmounts ? catOpenAmounts : catOpenAmounts.slice(0, 3)).map((d) => (
+              {(showAllCatAmounts ? filteredCatAmounts : filteredCatAmounts.slice(0, 3)).map((d) => (
                 <button
                   key={d.id}
                   type="button"
@@ -209,7 +240,7 @@ export default function CategoriesView({
           </div>
         )}
         <ShowMoreButton
-          total={catOpenAmounts.length}
+          total={filteredCatAmounts.length}
           visibleCount={3}
           expanded={showAllCatAmounts}
           onToggle={() => setShowAllCatAmounts((v) => !v)}
@@ -333,7 +364,7 @@ export default function CategoriesView({
               <button
                 type="button"
                 className="cat-card-body"
-                onClick={() => setSelectedCategory(g.name)}
+                onClick={() => onSelectCategory(g.name)}
               >
                 <div className="cat-symbol">{categorySymbol(g.name)}</div>
                 <div className="cat-name">{g.name}</div>

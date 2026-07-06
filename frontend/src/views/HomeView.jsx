@@ -48,6 +48,7 @@ export default function HomeView({
   onNav,
   onOpenDoc,
   onOpenContact,
+  onOpenCategory,
   onOpenReminder,
   onAddReminder,
   onAddDeadline,
@@ -57,6 +58,7 @@ export default function HomeView({
   onOpenAppeal,
 }) {
   const [deadlineFilter, setDeadlineFilter] = useState("all");
+  const [paymentsFilter, setPaymentsFilter] = useState("all");
   const [showAllDeadlines, setShowAllDeadlines] = useState(false);
   const [showAllPayments, setShowAllPayments] = useState(false);
   const [showAllReminders, setShowAllReminders] = useState(false);
@@ -68,11 +70,16 @@ export default function HomeView({
   );
 
   const pendingPayments = getOpenAmounts(docs);
-  const paymentsTotal = pendingPayments.reduce(
+  const recurringDocIds = getRecurringPaymentDocIds(docs);
+  const filteredPayments = pendingPayments.filter((d) => {
+    if (paymentsFilter === "all") return true;
+    const isRecurring = recurringDocIds.has(d.id);
+    return paymentsFilter === "recurring" ? isRecurring : !isRecurring;
+  });
+  const paymentsTotal = filteredPayments.reduce(
     (sum, d) => sum + (typeof d.amount === "number" ? d.amount : 0),
     0
   );
-  const recurringDocIds = getRecurringPaymentDocIds(docs);
 
   const statusSummary = buildStatusSummary(allOpenDeadlines, pendingPayments);
   const recentDocs = getRecentDocs(docs, 5);
@@ -232,8 +239,27 @@ export default function HomeView({
             <h2 className="section-title section-title-inline">Anstehende Ausgaben</h2>
             <span className="detail-muted">{formatAmount(paymentsTotal)} offen</span>
           </div>
+          <div className="filter-pills">
+            {[
+              { id: "all", label: "Alle" },
+              { id: "recurring", label: "Wiederkehrend" },
+              { id: "once", label: "Einmalig" },
+            ].map((f) => (
+              <button
+                key={f.id}
+                type="button"
+                className={`pill ${paymentsFilter === f.id ? "active" : ""}`}
+                onClick={() => setPaymentsFilter(f.id)}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+          {filteredPayments.length === 0 && (
+            <div className="empty">Keine Einträge für diesen Filter.</div>
+          )}
           <div className="linked-list">
-            {(showAllPayments ? pendingPayments : pendingPayments.slice(0, 3)).map((d) => {
+            {(showAllPayments ? filteredPayments : filteredPayments.slice(0, 3)).map((d) => {
               const days = d.deadline ? daysUntil(d.deadline) : null;
               const level = days != null ? deadlineLevel(days) : "gray";
               const recurring = recurringDocIds.has(d.id);
@@ -263,7 +289,7 @@ export default function HomeView({
             })}
           </div>
           <ShowMoreButton
-            total={pendingPayments.length}
+            total={filteredPayments.length}
             visibleCount={3}
             expanded={showAllPayments}
             onToggle={() => setShowAllPayments((v) => !v)}
@@ -303,7 +329,7 @@ export default function HomeView({
                   key={g.name}
                   type="button"
                   className="pill"
-                  onClick={() => onNav("categories")}
+                  onClick={() => onOpenCategory(g.name)}
                 >
                   {categorySymbol(g.name)} {g.name}
                 </button>
