@@ -95,8 +95,8 @@ Regeln für "actions":
                      "street": "Straße + Hausnummer falls erkennbar",
                      "zip": "Postleitzahl falls erkennbar",
                      "city": "Stadt/Ort falls erkennbar",
-                     "iban": "IBAN falls im Dokument erkennbar (z.B. im Briefkopf, bei Überweisungs- oder Lastschriftangaben)",
-                     "bic": "BIC/SWIFT-Code falls erkennbar",
+                     "iban": "IBAN des Kontakts, falls erkennbar. Kann unter verschiedenen Bezeichnungen im Dokument stehen (z.B. Empfänger-IBAN, Zahlungsempfänger, Kontoinhaber, Gegenkonto, IBAN im Briefkopf). Ordne sie dem Kontakt zu, wenn erkennbar ist, dass es sich um dessen Bankverbindung handelt.",
+                     "bic": "BIC/SWIFT-Code des Kontakts, falls erkennbar — analog zu iban.",
                      "website": "URL falls erkennbar",
                      "notes": "Weitere relevante Infos die nicht in andere Felder passen: Ansprechpartner, Abteilung, Öffnungszeiten, Aktenzeichen, Kundennummer, USt-ID, Handelsregister etc."
                    }
