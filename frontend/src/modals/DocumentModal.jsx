@@ -175,14 +175,14 @@ export default function DocumentModal({
             <div className="filter-pills">
               <button
                 type="button"
-                className={`pill ${doc.status === "Laufend" ? "active" : ""}`}
+                className={`pill status-pill ${doc.status === "Laufend" ? "active" : ""}`}
                 onClick={() => handleSetStatus("Laufend")}
               >
                 Laufend
               </button>
               <button
                 type="button"
-                className={`pill ${!doc.status ? "active" : ""}`}
+                className={`pill status-pill ${!doc.status ? "active" : ""}`}
                 onClick={() => handleSetStatus(null)}
               >
                 Kein Status

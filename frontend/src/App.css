@@ -1035,8 +1035,8 @@ input {
   position: absolute;
   top: 14px;
   right: 14px;
-  width: 32px;
-  height: 32px;
+  width: 44px;
+  height: 44px;
   border-radius: 8px;
   border: 0;
   background: transparent;
@@ -1254,6 +1254,21 @@ input {
 
 .btn-status-reopen:hover {
   background: var(--border);
+}
+
+/* Additive modifiers, not changes to .pill/.copy-btn themselves — those
+   are shared across ArchiveView/HomeView/CategoriesView/ReminderFormModal/
+   SettingsView and TemplateResultModal respectively. Padding-only growth
+   to reach the ~44px touch-target minimum, same font-size/visual style. */
+.status-pill {
+  padding: 12px 14px;
+}
+
+.status-more-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 13px 16px;
 }
 
 /* ---- Disclaimer ---- */

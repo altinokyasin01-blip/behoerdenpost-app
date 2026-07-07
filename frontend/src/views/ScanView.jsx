@@ -147,7 +147,15 @@ export default function ScanView({
         onClick={() => !uploading && fileInputRef.current?.click()}
       >
         <div className="dropzone-icon">
-          <IconUpload />
+          {uploading ? (
+            <div className="loading-dots" aria-hidden="true">
+              <span />
+              <span />
+              <span />
+            </div>
+          ) : (
+            <IconUpload />
+          )}
         </div>
         <div className="dropzone-title">
           {uploading ? "Analysiere…" : "Datei hier ablegen oder wählen"}
