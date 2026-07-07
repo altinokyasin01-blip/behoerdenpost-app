@@ -1,5 +1,11 @@
 const { createClient } = require("@supabase/supabase-js");
 
+// TEMP DEBUG — checking why Railway crashes with "supabaseUrl is required"
+// despite the vars appearing set in the dashboard. Logs presence/length
+// only, never the actual secret value.
+console.log("[requireAuth] SUPABASE_URL set:", !!process.env.SUPABASE_URL, "length:", (process.env.SUPABASE_URL || "").length);
+console.log("[requireAuth] SUPABASE_ANON_KEY set:", !!process.env.SUPABASE_ANON_KEY, "length:", (process.env.SUPABASE_ANON_KEY || "").length);
+
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_ANON_KEY
