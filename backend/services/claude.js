@@ -230,7 +230,10 @@ async function analyzeDocument(base64, mimeType) {
     typeof parsed.amount === "number" && !Number.isNaN(parsed.amount)
       ? parsed.amount
       : null;
-  const deadline = parsed.deadline ?? null;
+  const deadline =
+    typeof parsed.deadline === "string" && ISO_DATE_RE.test(parsed.deadline)
+      ? parsed.deadline
+      : null;
   const deadlineType = deadline
     ? (ALLOWED_DEADLINE_TYPES.includes(parsed.deadlineType)
         ? parsed.deadlineType
@@ -399,6 +402,10 @@ function normalizeActions(raw) {
     if (item.type === "amount" && typeof value === "string") {
       const n = Number(value.replace(",", "."));
       value = Number.isFinite(n) ? n : null;
+    }
+    if (item.type === "reminder" || item.type === "deadline") {
+      value = typeof value === "string" && ISO_DATE_RE.test(value) ? value : null;
+      if (!value) continue;
     }
     if (item.type === "event") {
       value = normalizeEventValue(value);
