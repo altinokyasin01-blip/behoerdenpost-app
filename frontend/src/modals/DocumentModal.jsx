@@ -81,6 +81,11 @@ export default function DocumentModal({
             <h3 className="detail-heading">
               {doc.qrCodes.length === 1 ? "QR-Code" : `QR-Codes (${doc.qrCodes.length})`}
             </h3>
+            <p className="detail-muted">
+              Automatisch erkannt und ausgelesen — überholt eventuelle
+              gegenteilige Angaben in der Zusammenfassung oben (Claude sieht
+              das Muster, liest es aber nicht selbst aus).
+            </p>
             {doc.qrCodes.map((content, i) => {
               const isUrl = /^https?:\/\//i.test(content.trim());
               const looksLikeGiroCode = content.startsWith("BCD");
