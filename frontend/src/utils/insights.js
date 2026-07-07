@@ -8,8 +8,11 @@ function normalizeSenderName(s) {
 
 // Core predicate behind all sender<->contact matching in the app: does a
 // document's sender line refer to this contact? Substring containment,
-// case-insensitive, whitespace-trimmed on both sides.
-function senderMatchesContactName(sender, contactName) {
+// case-insensitive, whitespace-trimmed on both sides. Exported so callers
+// matching a proposed contact name (e.g. a full letterhead name) against
+// existing contacts (e.g. a shorter stored name) use the exact same rule
+// as the rest of the app, rather than a separate, stricter comparison.
+export function senderMatchesContactName(sender, contactName) {
   const normSender = normalizeSenderName(sender);
   const normContact = normalizeSenderName(contactName);
   if (!normSender || !normContact) return false;
@@ -79,16 +82,21 @@ export function getCategoryGroups(docs) {
     );
 }
 
-// Doc ids considered "wahrscheinlich wiederkehrend" — true if EITHER holds:
-//   1. explicit flag: doc.recurring was set (user confirmed at scan time, or
-//      Claude's prompt-based guess wasn't overridden)
-//   2. heuristic: same sender, deadlineType "zahlung", appearing 2+ times.
+// Doc ids considered "wahrscheinlich wiederkehrend". doc.recurring is a
+// tri-state: null means the user never explicitly decided (Claude's own
+// guess doesn't count as a decision either) — only then does the heuristic
+// (same sender, deadlineType "zahlung", appearing 2+ times) get to weigh in.
+// An explicit true/false is binding and skips the heuristic entirely, in
+// both directions — a document the user explicitly marked "not recurring"
+// must not be pulled back in just because a sibling invoice matches the
+// pattern.
 // contact.iban is treated as a supporting signal by callers, not part of
 // this gate — plenty of one-off invoices carry an IBAN too (see the Telekom
 // test scan), so IBAN alone would over-flag.
 export function getRecurringPaymentDocIds(docs) {
   const groups = new Map();
   for (const d of docs) {
+    if (d.recurring != null) continue;
     if (d.deadlineType !== "zahlung" || !d.sender) continue;
     const key = normalizeSenderName(d.sender);
     if (!key) continue;
@@ -102,7 +110,7 @@ export function getRecurringPaymentDocIds(docs) {
     }
   }
   for (const d of docs) {
-    if (d.recurring) recurring.add(d.id);
+    if (d.recurring === true) recurring.add(d.id);
   }
   return recurring;
 }

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { IconSearch } from "../components/icons.jsx";
+import ShowMoreButton from "../components/ShowMoreButton.jsx";
 
 function contactTopInfo(c) {
   return c.iban || c.email || c.phone || "";
@@ -20,6 +21,7 @@ function ContactCard({ contact, onClick }) {
 
 export default function ContactsView({ contacts, onAdd, onOpenDetail }) {
   const [search, setSearch] = useState("");
+  const [showAll, setShowAll] = useState(false);
 
   const filtered = contacts.filter((c) => {
     if (!search) return true;
@@ -80,7 +82,7 @@ export default function ContactsView({ contacts, onAdd, onOpenDetail }) {
             {filtered.length === 0 && (
               <div className="empty">Keine Treffer.</div>
             )}
-            {filtered.map((c) => (
+            {(showAll ? filtered : filtered.slice(0, 5)).map((c) => (
               <ContactCard
                 key={c.id}
                 contact={c}
@@ -88,6 +90,12 @@ export default function ContactsView({ contacts, onAdd, onOpenDetail }) {
               />
             ))}
           </div>
+          <ShowMoreButton
+            total={filtered.length}
+            visibleCount={5}
+            expanded={showAll}
+            onToggle={() => setShowAll((v) => !v)}
+          />
         </>
       )}
     </div>

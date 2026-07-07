@@ -37,6 +37,7 @@ import {
   loadTooltipsSeen,
 } from "./utils/storage.js";
 import { TODAY, isoLocal, addDays, todayIso } from "./utils/format.js";
+import { senderMatchesContactName } from "./utils/insights.js";
 import {
   CONTACT_TYPES,
   CATEGORY_TO_CONTACT_TYPE,
@@ -838,7 +839,9 @@ export default function App() {
       replyDraft: result.replyDraft || null,
       status: "Offen",
       notes: null,
-      recurring: !!result.recurring,
+      // Tri-state: null = never explicitly decided, true/false = binding
+      // (see getRecurringPaymentDocIds). Must not collapse null to false.
+      recurring: result.recurring == null ? null : !!result.recurring,
       qrCodes: Array.isArray(result.qrCodes) ? result.qrCodes : [],
       filename: result.filename || null,
     };
@@ -897,8 +900,12 @@ export default function App() {
             : { name: String(a.value) };
         const name = (info.name || "").trim();
         if (!name) continue;
-        const existing = contacts.find(
-          (c) => c.name.toLowerCase() === name.toLowerCase()
+        // Substring match (same rule insights.js uses for sender<->contact
+        // linking elsewhere) — an exact-name check would miss e.g. a Claude
+        // suggestion "Telekom Deutschland GmbH" against an existing contact
+        // stored as just "Telekom", creating an avoidable duplicate.
+        const existing = contacts.find((c) =>
+          senderMatchesContactName(name, c.name)
         );
         if (!existing) {
           const notesParts = [
@@ -955,7 +962,12 @@ export default function App() {
 
   function handlePostScanSkip() {
     if (!pendingResult) return;
-    setDocs((prev) => [buildDocFromResult(pendingResult), ...prev]);
+    // Skipping means the user never reviewed the recurring checkbox at all
+    // — same "undecided" outcome as leaving it untouched and confirming.
+    setDocs((prev) => [
+      buildDocFromResult({ ...pendingResult, recurring: null }),
+      ...prev,
+    ]);
     setPendingResult(null);
     setScanCategoryPrefill(null);
     celebrateFirstScan();

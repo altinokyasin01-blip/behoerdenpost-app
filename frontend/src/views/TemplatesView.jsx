@@ -1,5 +1,7 @@
+import { useState } from "react";
 import { IconChevron, IconTemplate } from "../components/icons.jsx";
 import CardMenu from "../components/CardMenu.jsx";
+import ShowMoreButton from "../components/ShowMoreButton.jsx";
 import { TEMPLATE_TYPES } from "../utils/domainConstants.js";
 
 export default function TemplatesView({
@@ -8,6 +10,8 @@ export default function TemplatesView({
   onUseSavedTemplate,
   onDeleteSavedTemplate,
 }) {
+  const [showAll, setShowAll] = useState(false);
+
   return (
     <div className="view">
       <header className="view-header">
@@ -22,7 +26,7 @@ export default function TemplatesView({
         <>
           <h2 className="section-title">Meine Vorlagen</h2>
           <div className="template-grid">
-            {savedTemplates.map((t) => {
+            {(showAll ? savedTemplates : savedTemplates.slice(0, 5)).map((t) => {
               const typeLabel = TEMPLATE_TYPES.find((x) => x.id === t.templateType)?.label;
               return (
                 <div key={t.id} className="card template-card template-card-wrap">
@@ -49,6 +53,12 @@ export default function TemplatesView({
               );
             })}
           </div>
+          <ShowMoreButton
+            total={savedTemplates.length}
+            visibleCount={5}
+            expanded={showAll}
+            onToggle={() => setShowAll((v) => !v)}
+          />
         </>
       )}
 

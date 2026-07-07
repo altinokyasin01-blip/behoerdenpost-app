@@ -34,7 +34,10 @@ export function docToRow(doc, userId) {
     status: doc.status || "Offen",
     notes: doc.notes || null,
     manual: !!doc.manual,
-    recurring: !!doc.recurring,
+    // Tri-state: null = never explicitly decided by the user (heuristic in
+    // getRecurringPaymentDocIds applies), true/false = binding decision —
+    // must not collapse null to false here.
+    recurring: doc.recurring == null ? null : !!doc.recurring,
     qr_codes: Array.isArray(doc.qrCodes) ? doc.qrCodes : [],
     filename: doc.filename || null,
     scan_date: doc.date || null,
@@ -57,7 +60,7 @@ export function rowToDoc(row) {
     status: row.status || "Offen",
     notes: row.notes,
     manual: !!row.manual,
-    recurring: !!row.recurring,
+    recurring: row.recurring == null ? null : !!row.recurring,
     qrCodes: Array.isArray(row.qr_codes) ? row.qr_codes : [],
     filename: row.filename,
     date: row.scan_date || (row.created_at ? row.created_at.slice(0, 10) : null),

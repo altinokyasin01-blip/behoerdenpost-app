@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Modal from "../components/Modal.jsx";
 import TabTip from "../components/TabTip.jsx";
+import ShowMoreButton from "../components/ShowMoreButton.jsx";
 import { IconSearch } from "../components/icons.jsx";
 import { formatAmount, formatDate } from "../utils/format.js";
 
@@ -199,6 +200,11 @@ export default function SearchModal({
   onClose,
 }) {
   const [query, setQuery] = useState("");
+  const [showAllDocs, setShowAllDocs] = useState(false);
+  const [showAllContacts, setShowAllContacts] = useState(false);
+  const [showAllReminders, setShowAllReminders] = useState(false);
+  const [showAllEvents, setShowAllEvents] = useState(false);
+  const [showAllLocalFiles, setShowAllLocalFiles] = useState(false);
   const inputRef = useRef(null);
 
   useEffect(() => {
@@ -283,7 +289,7 @@ export default function SearchModal({
                 <h4 className="search-group-title">
                   Dokumente <span className="search-group-count">{results.docs.length}</span>
                 </h4>
-                {results.docs.map((h) => (
+                {(showAllDocs ? results.docs : results.docs.slice(0, 3)).map((h) => (
                   <SearchHit
                     key={h.item.id}
                     icon="§"
@@ -293,6 +299,12 @@ export default function SearchModal({
                     onClick={() => openDoc(h.item.id)}
                   />
                 ))}
+                <ShowMoreButton
+                  total={results.docs.length}
+                  visibleCount={3}
+                  expanded={showAllDocs}
+                  onToggle={() => setShowAllDocs((v) => !v)}
+                />
               </section>
             )}
             {results.contacts.length > 0 && (
@@ -300,7 +312,7 @@ export default function SearchModal({
                 <h4 className="search-group-title">
                   Kontakte <span className="search-group-count">{results.contacts.length}</span>
                 </h4>
-                {results.contacts.map((h) => (
+                {(showAllContacts ? results.contacts : results.contacts.slice(0, 3)).map((h) => (
                   <SearchHit
                     key={h.item.id}
                     icon="◉"
@@ -310,6 +322,12 @@ export default function SearchModal({
                     onClick={() => openContact(h.item.id)}
                   />
                 ))}
+                <ShowMoreButton
+                  total={results.contacts.length}
+                  visibleCount={3}
+                  expanded={showAllContacts}
+                  onToggle={() => setShowAllContacts((v) => !v)}
+                />
               </section>
             )}
             {results.reminders.length > 0 && (
@@ -317,7 +335,7 @@ export default function SearchModal({
                 <h4 className="search-group-title">
                   Erinnerungen <span className="search-group-count">{results.reminders.length}</span>
                 </h4>
-                {results.reminders.map((h) => (
+                {(showAllReminders ? results.reminders : results.reminders.slice(0, 3)).map((h) => (
                   <SearchHit
                     key={h.item.id}
                     icon="◐"
@@ -327,6 +345,12 @@ export default function SearchModal({
                     onClick={() => openReminder(h.item.id)}
                   />
                 ))}
+                <ShowMoreButton
+                  total={results.reminders.length}
+                  visibleCount={3}
+                  expanded={showAllReminders}
+                  onToggle={() => setShowAllReminders((v) => !v)}
+                />
               </section>
             )}
             {results.events.length > 0 && (
@@ -334,7 +358,7 @@ export default function SearchModal({
                 <h4 className="search-group-title">
                   Termine <span className="search-group-count">{results.events.length}</span>
                 </h4>
-                {results.events.map((h) => (
+                {(showAllEvents ? results.events : results.events.slice(0, 3)).map((h) => (
                   <SearchHit
                     key={h.item.id}
                     icon="◆"
@@ -344,6 +368,12 @@ export default function SearchModal({
                     onClick={() => openEvent(h.item.id)}
                   />
                 ))}
+                <ShowMoreButton
+                  total={results.events.length}
+                  visibleCount={3}
+                  expanded={showAllEvents}
+                  onToggle={() => setShowAllEvents((v) => !v)}
+                />
               </section>
             )}
             {results.localFiles && results.localFiles.length > 0 && (
@@ -351,7 +381,7 @@ export default function SearchModal({
                 <h4 className="search-group-title">
                   Lokale Dateien <span className="search-group-count">{results.localFiles.length}</span>
                 </h4>
-                {results.localFiles.map((h, i) => (
+                {(showAllLocalFiles ? results.localFiles : results.localFiles.slice(0, 3)).map((h, i) => (
                   <SearchHit
                     key={`${h.item.folderId}-${h.item.path}-${i}`}
                     icon="≡"
@@ -361,6 +391,12 @@ export default function SearchModal({
                     onClick={() => openLocalFile(h.item)}
                   />
                 ))}
+                <ShowMoreButton
+                  total={results.localFiles.length}
+                  visibleCount={3}
+                  expanded={showAllLocalFiles}
+                  onToggle={() => setShowAllLocalFiles((v) => !v)}
+                />
               </section>
             )}
           </div>

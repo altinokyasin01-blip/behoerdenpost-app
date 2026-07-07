@@ -4,6 +4,7 @@ import { CategoryEditor } from "../components/CategoryChip.jsx";
 import DeadlineTypeBadge from "../components/DeadlineTypeBadge.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import CardMenu from "../components/CardMenu.jsx";
+import ShowMoreButton from "../components/ShowMoreButton.jsx";
 import { formatDate } from "../utils/format.js";
 
 const ARCHIVE_SORTS = {
@@ -35,6 +36,7 @@ export default function ArchiveView({
   const [sort, setSort] = useState("date_desc");
   const [search, setSearch] = useState("");
   const [editingCategoryDocId, setEditingCategoryDocId] = useState(null);
+  const [showAll, setShowAll] = useState(false);
 
   const years = useMemo(
     () => [...new Set(docs.map((d) => d.date.slice(0, 4)))].sort().reverse(),
@@ -129,7 +131,7 @@ export default function ArchiveView({
         {filtered.length === 0 && (
           <div className="empty">Keine Dokumente gefunden.</div>
         )}
-        {filtered.map((d) => {
+        {(showAll ? filtered : filtered.slice(0, 5)).map((d) => {
           if (editingCategoryDocId === d.id) {
             return (
               <div key={d.id} className="card doc-card doc-card-editing">
@@ -181,6 +183,12 @@ export default function ArchiveView({
           );
         })}
       </div>
+      <ShowMoreButton
+        total={filtered.length}
+        visibleCount={5}
+        expanded={showAll}
+        onToggle={() => setShowAll((v) => !v)}
+      />
     </div>
   );
 }

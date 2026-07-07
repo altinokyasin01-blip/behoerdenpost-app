@@ -66,6 +66,11 @@ export default function PostScanModal({
     categoryPrefill || result.category || "Sonstiges"
   );
   const [recurringDraft, setRecurringDraft] = useState(!!result.recurring);
+  // Tracks whether the user actually interacted with the checkbox, as
+  // opposed to just leaving Claude's pre-filled guess untouched and
+  // confirming — only a real interaction counts as an explicit, binding
+  // decision (see getRecurringPaymentDocIds in insights.js).
+  const [recurringTouched, setRecurringTouched] = useState(false);
 
   function toggle(i) {
     setEnabled((prev) => ({ ...prev, [i]: !prev[i] }));
@@ -74,7 +79,10 @@ export default function PostScanModal({
   function handleConfirm() {
     onConfirm(
       actions.filter((_, i) => enabled[i]),
-      { category: categoryDraft, recurring: recurringDraft }
+      {
+        category: categoryDraft,
+        recurring: recurringTouched ? recurringDraft : null,
+      }
     );
   }
 
@@ -112,7 +120,10 @@ export default function PostScanModal({
           <input
             type="checkbox"
             checked={recurringDraft}
-            onChange={(e) => setRecurringDraft(e.target.checked)}
+            onChange={(e) => {
+              setRecurringDraft(e.target.checked);
+              setRecurringTouched(true);
+            }}
           />
           <div className="google-sync-body">
             <div className="google-sync-title">Wiederkehrende Zahlung</div>

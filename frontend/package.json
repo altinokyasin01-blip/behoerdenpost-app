@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "postbuild": "node scripts/inject-sw-version.js",
     "preview": "vite preview"
   },
   "dependencies": {
