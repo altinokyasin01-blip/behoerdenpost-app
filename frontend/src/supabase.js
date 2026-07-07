@@ -31,7 +31,11 @@ export function docToRow(doc, userId) {
     deadline_type: doc.deadlineType || doc.deadline_type || null,
     reply_draft: doc.replyDraft || doc.reply_draft || null,
     amount: doc.amount ?? null,
-    status: doc.status || "Offen",
+    // Tri-state, same reasoning as recurring below: null = "Kein Status"
+    // (explicit), not a missing value — must not collapse to "Offen" here.
+    // Creation sites (buildDocFromResult etc.) set the "Offen" default,
+    // this layer only ever passes through what's already there.
+    status: doc.status ?? null,
     notes: doc.notes || null,
     manual: !!doc.manual,
     // Tri-state: null = never explicitly decided by the user (heuristic in
@@ -57,7 +61,7 @@ export function rowToDoc(row) {
     deadlineType: row.deadline_type,
     replyDraft: row.reply_draft,
     amount: row.amount,
-    status: row.status || "Offen",
+    status: row.status ?? null,
     notes: row.notes,
     manual: !!row.manual,
     recurring: row.recurring == null ? null : !!row.recurring,

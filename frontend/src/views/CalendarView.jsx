@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { DEADLINE_TYPE_LABEL } from "../utils/domainConstants.js";
 import { TODAY, isoLocal, formatDate } from "../utils/format.js";
+import { isActive } from "../utils/insights.js";
 
 const WEEKDAY_HEADERS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
 const MONTH_NAMES = [
@@ -64,7 +65,7 @@ export default function CalendarView({
       map.get(iso)[kind].push(item);
     }
     for (const d of docs) {
-      if (d.deadline && d.status !== "Erledigt") push(d.deadline, "deadline", d);
+      if (d.deadline && isActive(d.status)) push(d.deadline, "deadline", d);
     }
     for (const r of reminders) {
       if (r.date && !r.done) push(r.date, "reminder", r);

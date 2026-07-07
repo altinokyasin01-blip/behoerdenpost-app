@@ -71,6 +71,10 @@ export default function PostScanModal({
   // confirming — only a real interaction counts as an explicit, binding
   // decision (see getRecurringPaymentDocIds in insights.js).
   const [recurringTouched, setRecurringTouched] = useState(false);
+  // No tri-state needed here (unlike recurring) — "Offen" is always a safe
+  // default either way, so the checkbox's value at confirm-time is used
+  // as-is, touched or not.
+  const [noStatusDraft, setNoStatusDraft] = useState(!!result.noStatusNeeded);
 
   function toggle(i) {
     setEnabled((prev) => ({ ...prev, [i]: !prev[i] }));
@@ -82,6 +86,7 @@ export default function PostScanModal({
       {
         category: categoryDraft,
         recurring: recurringTouched ? recurringDraft : null,
+        noStatusNeeded: noStatusDraft,
       }
     );
   }
@@ -129,6 +134,22 @@ export default function PostScanModal({
             <div className="google-sync-title">Wiederkehrende Zahlung</div>
             <div className="google-sync-sub">
               Abo, Dauerauftrag oder Lastschrift, die sich regelmäßig wiederholt
+            </div>
+          </div>
+        </label>
+
+        <label className="google-sync-toggle">
+          <input
+            type="checkbox"
+            checked={noStatusDraft}
+            onChange={(e) => setNoStatusDraft(e.target.checked)}
+          />
+          <div className="google-sync-body">
+            <div className="google-sync-title">Kein Status nötig</div>
+            <div className="google-sync-sub">
+              {result.noStatusNeeded
+                ? "Claude schlägt vor: für dieses Dokument gibt es nichts zu bearbeiten"
+                : "Für Bescheinigungen, Zertifikate o.ä. ohne Handlungsbedarf"}
             </div>
           </div>
         </label>

@@ -9,6 +9,7 @@ export default function DocumentModal({
   doc,
   onClose,
   onToggleStatus,
+  onSetStatus,
   onEditDeadline,
   onDelete,
   onExportToCalendar,
@@ -16,8 +17,16 @@ export default function DocumentModal({
   onUpdateCategory,
 }) {
   const [copied, setCopied] = useState(false);
+  const [showMoreStatus, setShowMoreStatus] = useState(false);
   const days = doc.deadline ? daysUntil(doc.deadline) : null;
   const level = days !== null ? deadlineLevel(days) : null;
+
+  // Collapses back after picking — the StatusBadge above already reflects
+  // the new state immediately, no reason to keep the picker open.
+  function handleSetStatus(value) {
+    onSetStatus(value);
+    setShowMoreStatus(false);
+  }
 
   async function handleCopy() {
     if (!doc.replyDraft) return;
@@ -155,6 +164,31 @@ export default function DocumentModal({
           >
             {isDone ? "Als offen markieren" : "Als erledigt markieren"}
           </button>
+          <button
+            type="button"
+            className="copy-btn status-more-toggle"
+            onClick={() => setShowMoreStatus((v) => !v)}
+          >
+            Weitere Status-Optionen {showMoreStatus ? "▲" : "▼"}
+          </button>
+          {showMoreStatus && (
+            <div className="filter-pills">
+              <button
+                type="button"
+                className={`pill ${doc.status === "Laufend" ? "active" : ""}`}
+                onClick={() => handleSetStatus("Laufend")}
+              >
+                Laufend
+              </button>
+              <button
+                type="button"
+                className={`pill ${!doc.status ? "active" : ""}`}
+                onClick={() => handleSetStatus(null)}
+              >
+                Kein Status
+              </button>
+            </div>
+          )}
           {doc.deadline && (
             <button
               type="button"

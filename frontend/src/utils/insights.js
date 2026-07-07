@@ -46,10 +46,26 @@ export function findContactsForSender(contacts, senderName) {
   return contacts.filter((c) => senderMatchesContactName(senderName, c.name));
 }
 
+// Status is 4-state: "Offen" | "Laufend" | "Erledigt" | null ("Kein
+// Status"). Only "Offen"/"Laufend" count as an active, unresolved document
+// — an allowlist rather than `status !== "Erledigt"`, since that blocklist
+// form would silently also count null (no status at all) as active.
+export function isActive(status) {
+  return status === "Offen" || status === "Laufend";
+}
+
+// "Laufend" docs with no deadline to anchor them to — otherwise invisible
+// everywhere on Home (Laufend WITH a deadline already surfaces fine via
+// getOpenDeadlines, which counts it as active). docs is already
+// newest-first; filter preserves that order, no re-sort needed.
+export function getOngoingWithoutDeadline(docs) {
+  return docs.filter((d) => d.status === "Laufend" && !d.deadline);
+}
+
 // Open deadlines, soonest first — same filter+sort HomeView already used.
 export function getOpenDeadlines(docs) {
   return docs
-    .filter((d) => d.deadline && d.status !== "Erledigt")
+    .filter((d) => d.deadline && isActive(d.status))
     .sort((a, b) => a.deadline.localeCompare(b.deadline));
 }
 
@@ -57,7 +73,7 @@ export function getOpenDeadlines(docs) {
 // sorts last) — same filter+sort HomeView already used.
 export function getOpenAmounts(docs) {
   return docs
-    .filter((d) => d.amount != null && d.status !== "Erledigt")
+    .filter((d) => d.amount != null && isActive(d.status))
     .sort((a, b) => (a.deadline || "9").localeCompare(b.deadline || "9"));
 }
 
@@ -70,7 +86,7 @@ export function getCategoryGroups(docs) {
     if (!map.has(cat)) map.set(cat, { total: 0, open: 0 });
     const g = map.get(cat);
     g.total += 1;
-    if (d.status !== "Erledigt") g.open += 1;
+    if (isActive(d.status)) g.open += 1;
   }
   return [...map.entries()]
     .map(([name, counts]) => ({ name, ...counts }))

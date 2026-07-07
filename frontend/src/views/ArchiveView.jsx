@@ -46,7 +46,8 @@ export default function ArchiveView({
   const filtered = docs
     .filter((d) => {
       if (categoryFilter && d.category !== categoryFilter) return false;
-      if (filter === "open" && d.status === "Erledigt") return false;
+      if (filter === "open" && d.status !== "Offen") return false;
+      if (filter === "laufend" && d.status !== "Laufend") return false;
       if (filter === "done" && d.status !== "Erledigt") return false;
       if (filter.startsWith("y-") && !d.date.startsWith(filter.slice(2)))
         return false;
@@ -65,6 +66,7 @@ export default function ArchiveView({
   const filters = [
     { id: "all", label: "Alle" },
     { id: "open", label: "Offen" },
+    { id: "laufend", label: "Laufend" },
     { id: "done", label: "Erledigt" },
     ...years.map((y) => ({ id: `y-${y}`, label: y })),
   ];

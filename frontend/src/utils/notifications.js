@@ -1,4 +1,5 @@
 import { TODAY, isoLocal, daysUntil, addDays } from "./format.js";
+import { isActive } from "./insights.js";
 
 const NOTIFIED_KEY_PREFIX = "notified_";
 const NOTIFIED_MAX_AGE_DAYS = 7;
@@ -29,7 +30,7 @@ export function sendDeadlineReminders(docs, reminders = []) {
   const today = isoLocal(TODAY);
   cleanupOldNotifiedKeys(today);
   for (const d of docs) {
-    if (d.status === "Erledigt" || !d.deadline) continue;
+    if (!isActive(d.status) || !d.deadline) continue;
     const days = daysUntil(d.deadline);
     if (days > 3) continue;
     const key = `notified_${d.id}_${today}`;

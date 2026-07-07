@@ -37,7 +37,7 @@ import {
   loadTooltipsSeen,
 } from "./utils/storage.js";
 import { TODAY, isoLocal, addDays, todayIso } from "./utils/format.js";
-import { senderMatchesContactName } from "./utils/insights.js";
+import { senderMatchesContactName, isActive } from "./utils/insights.js";
 import { authFetch } from "./utils/apiFetch.js";
 import {
   CONTACT_TYPES,
@@ -595,7 +595,7 @@ export default function App() {
     const entries = [];
     if (scope === "all" || scope === "deadlines") {
       for (const d of docs) {
-        if (d.deadline && d.status !== "Erledigt") {
+        if (d.deadline && isActive(d.status)) {
           entries.push(docToIcsEntry(d));
         }
       }
@@ -838,7 +838,12 @@ export default function App() {
       summary: result.summary || null,
       fullText: result.fullText || null,
       replyDraft: result.replyDraft || null,
-      status: "Offen",
+      // Claude may suggest this document has no meaningful status at all
+      // (e.g. a certificate) — shown as an overridable suggestion in
+      // PostScanModal, same pattern as recurring below. No tri-state needed
+      // here (unlike recurring) since there's no heuristic to defer to —
+      // "Offen" is always a safe resting default either way.
+      status: result.noStatusNeeded ? null : "Offen",
       notes: null,
       // Tri-state: null = never explicitly decided, true/false = binding
       // (see getRecurringPaymentDocIds). Must not collapse null to false.
@@ -857,6 +862,9 @@ export default function App() {
         : {}),
       ...(overrides.recurring !== undefined
         ? { recurring: overrides.recurring }
+        : {}),
+      ...(overrides.noStatusNeeded !== undefined
+        ? { noStatusNeeded: overrides.noStatusNeeded }
         : {}),
     });
     const newReminders = [];
@@ -983,9 +991,23 @@ export default function App() {
   }
 
   function toggleReminder(id) {
+    const reminder = reminders.find((r) => r.id === id);
     setReminders((prev) =>
       prev.map((r) => (r.id === id ? { ...r, done: !r.done } : r))
     );
+    // Completing an appeal reminder doesn't auto-close out the document's
+    // status — the outcome might still be pending. Ask instead of deciding
+    // for the user, same "suggest, don't force" principle as the Laufend
+    // nudge in saveReminder above. Covers both entry points that funnel
+    // through this function (Home's quick-toggle, ReminderDetailModal).
+    if (reminder && !reminder.done && reminder.kind === "appeal" && reminder.docId) {
+      const doc = docs.find((d) => d.id === reminder.docId);
+      if (doc && doc.status !== "Erledigt") {
+        if (confirm(`Status von "${doc.title}" auf Erledigt setzen?`)) {
+          setDocStatus(doc.id, "Erledigt");
+        }
+      }
+    }
   }
 
   function toggleStatus(id) {
@@ -995,6 +1017,12 @@ export default function App() {
           ? { ...d, status: d.status === "Erledigt" ? "Offen" : "Erledigt" }
           : d
       )
+    );
+  }
+
+  function setDocStatus(id, value) {
+    setDocs((prev) =>
+      prev.map((d) => (d.id === id ? { ...d, status: value } : d))
     );
   }
 
@@ -1088,6 +1116,19 @@ export default function App() {
       setReminders((prev) => [created, ...prev]);
       if (syncToGoogle && created.date) {
         exportItemToGoogle(created, "reminder");
+      }
+      // A newly created appeal reminder suggests the document is now "in
+      // progress" — only nudge status if it's still at the default "Offen".
+      // Erledigt or an already-set Laufend reflects a conscious decision
+      // the automation shouldn't overwrite.
+      if (created.kind === "appeal" && created.docId) {
+        setDocs((prev) =>
+          prev.map((d) =>
+            d.id === created.docId && d.status === "Offen"
+              ? { ...d, status: "Laufend" }
+              : d
+          )
+        );
       }
     }
     closeReminderForm();
@@ -1695,6 +1736,7 @@ export default function App() {
           existingCategories={existingCategories}
           onClose={() => setSelectedId(null)}
           onToggleStatus={() => toggleStatus(selectedDoc.id)}
+          onSetStatus={(value) => setDocStatus(selectedDoc.id, value)}
           onEditDeadline={() => openDeadlineEdit(selectedDoc.id)}
           onDelete={() => deleteDoc(selectedDoc.id)}
           onExportToCalendar={() => exportDocToICS(selectedDoc)}

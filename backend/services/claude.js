@@ -60,6 +60,7 @@ JSON-Schema (Teil 1):
   "deadline": "Wichtigste Frist im Format YYYY-MM-DD oder null wenn keine erkennbar",
   "deadlineType": "Genau EINER dieser Werte oder null wenn keine Frist: ${ALLOWED_DEADLINE_TYPES.join(", ")}",
   "recurring": "true wenn das Dokument auf eine wiederkehrende/monatliche Zahlung hindeutet (Signalwörter: Folgelastschrift, Dauerauftrag, Abo, monatlich, Mandatsreferenz, SEPA-Lastschrift mit wiederkehrendem Muster), sonst false. Reine Vermutung ist ok — der Nutzer sieht das als vorausgefüllte, änderbare Checkbox.",
+  "noStatusNeeded": "true wenn dieses Dokument von Natur aus keinen sinnvollen Bearbeitungsstatus hat — es gibt nichts zu bearbeiten, offen zu lassen oder zu erledigen (reine Bescheinigung, Zertifikat, Informationsschreiben ohne Handlungsbedarf). false, wenn ein Status wie 'offen'/'in Bearbeitung'/'erledigt' sinnvoll ist, weil das Dokument eine Handlung, Frist oder Reaktion erwarten lässt. Beurteile das Konzept, nicht eine feste Liste von Dokumenttypen — bei Unsicherheit oder Uneindeutigkeit immer false. Reine Einschätzung — der Nutzer sieht das als vorausgefüllte, änderbare Option.",
   "replyDraft": "Vorschlag für ein Antwortschreiben (Deutsch, förmlicher Ton) oder null",
   "actions": [
     {
@@ -257,6 +258,7 @@ async function analyzeDocument(base64, mimeType) {
     deadline,
     deadlineType,
     recurring: parsed.recurring === true,
+    noStatusNeeded: parsed.noStatusNeeded === true,
     replyDraft: parsed.replyDraft ?? null,
     actions: normalizeActions(parsed.actions),
   };

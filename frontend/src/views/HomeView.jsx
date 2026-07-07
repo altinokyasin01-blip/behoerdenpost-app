@@ -2,6 +2,7 @@ import { useState } from "react";
 import { IconCamera, IconChevron } from "../components/icons.jsx";
 import CardMenu from "../components/CardMenu.jsx";
 import DeadlineTypeBadge from "../components/DeadlineTypeBadge.jsx";
+import StatusBadge from "../components/StatusBadge.jsx";
 import ShowMoreButton from "../components/ShowMoreButton.jsx";
 import { DEADLINE_TYPES, DEADLINE_TYPE_LABEL, categorySymbol } from "../utils/domainConstants.js";
 import {
@@ -14,6 +15,7 @@ import {
 import {
   getOpenDeadlines,
   getOpenAmounts,
+  getOngoingWithoutDeadline,
   getRecurringPaymentDocIds,
   getRecentDocs,
   getCategoryGroups,
@@ -62,8 +64,10 @@ export default function HomeView({
   const [showAllDeadlines, setShowAllDeadlines] = useState(false);
   const [showAllPayments, setShowAllPayments] = useState(false);
   const [showAllReminders, setShowAllReminders] = useState(false);
+  const [showAllOngoing, setShowAllOngoing] = useState(false);
 
   const allOpenDeadlines = getOpenDeadlines(docs);
+  const ongoingWithoutDeadline = getOngoingWithoutDeadline(docs);
 
   const openDeadlines = allOpenDeadlines.filter(
     (d) => deadlineFilter === "all" || (d.deadlineType || "sonstiges") === deadlineFilter
@@ -232,6 +236,37 @@ export default function HomeView({
         expanded={showAllDeadlines}
         onToggle={() => setShowAllDeadlines((v) => !v)}
       />
+
+      {ongoingWithoutDeadline.length > 0 && (
+        <>
+          <h2 className="section-title">Aktuell laufend</h2>
+          <div className="linked-list">
+            {(showAllOngoing
+              ? ongoingWithoutDeadline
+              : ongoingWithoutDeadline.slice(0, 3)
+            ).map((d) => (
+              <button
+                key={d.id}
+                type="button"
+                className="linked-item linked-clickable"
+                onClick={() => onOpenDoc(d.id)}
+              >
+                <div className="linked-title">{d.title}</div>
+                <div className="linked-meta">
+                  {d.sender && `${d.sender} · `}
+                  <StatusBadge status={d.status} />
+                </div>
+              </button>
+            ))}
+          </div>
+          <ShowMoreButton
+            total={ongoingWithoutDeadline.length}
+            visibleCount={3}
+            expanded={showAllOngoing}
+            onToggle={() => setShowAllOngoing((v) => !v)}
+          />
+        </>
+      )}
 
       {pendingPayments.length > 0 && (
         <>
