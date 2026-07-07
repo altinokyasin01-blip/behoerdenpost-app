@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import Modal from "../components/Modal.jsx";
 import { daysUntil, formatDate } from "../utils/format.js";
+import { authFetch } from "../utils/apiFetch.js";
 
 export default function AppealModal({
   doc,
   apiBase,
+  accessToken,
   onClose,
   onScheduleReminder,
   onShowReplyDraft,
@@ -17,15 +19,19 @@ export default function AppealModal({
     let cancelled = false;
     async function run() {
       try {
-        const res = await fetch(`${apiBase}/api/appeal`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            documentType: doc.title,
-            summary: doc.summary,
-            deadlineType: doc.deadlineType,
-          }),
-        });
+        const res = await authFetch(
+          `${apiBase}/api/appeal`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              documentType: doc.title,
+              summary: doc.summary,
+              deadlineType: doc.deadlineType,
+            }),
+          },
+          accessToken
+        );
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
           throw new Error(data.error || `HTTP ${res.status}`);

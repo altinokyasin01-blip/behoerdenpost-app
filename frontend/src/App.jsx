@@ -38,6 +38,7 @@ import {
 } from "./utils/storage.js";
 import { TODAY, isoLocal, addDays, todayIso } from "./utils/format.js";
 import { senderMatchesContactName } from "./utils/insights.js";
+import { authFetch } from "./utils/apiFetch.js";
 import {
   CONTACT_TYPES,
   CATEGORY_TO_CONTACT_TYPE,
@@ -1246,11 +1247,15 @@ export default function App() {
       }
       setUserName(payload.senderName);
     }
-    const res = await fetch(`${API_BASE}/api/template`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
+    const res = await authFetch(
+      `${API_BASE}/api/template`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      },
+      session?.access_token
+    );
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
       throw new Error(data.error || `HTTP ${res.status}`);
@@ -1608,6 +1613,7 @@ export default function App() {
             docs={docs}
             contacts={contacts}
             isFirstScan={!tooltipsSeen.has("first_scan_done")}
+            accessToken={session?.access_token}
             onScanned={setPendingResult}
             onOpenDoc={setSelectedId}
           />
@@ -1760,6 +1766,7 @@ export default function App() {
           <AppealModal
             doc={d}
             apiBase={API_BASE}
+            accessToken={session?.access_token}
             onClose={() => setAppealDocId(null)}
             onScheduleReminder={handleAppealScheduleReminder}
             onShowReplyDraft={handleAppealShowReplyDraft}

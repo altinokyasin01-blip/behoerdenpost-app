@@ -6,6 +6,7 @@ const analyzeRouter = require("./routes/analyze");
 const appealRouter = require("./routes/appeal");
 const qrRouter = require("./routes/qr");
 const templateRouter = require("./routes/template");
+const requireAuth = require("./middleware/requireAuth");
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -25,10 +26,10 @@ app.use('/api/analyze', (req, res, next) => {
   next();
 });
 
-app.use("/api/analyze", analyzeRouter);
-app.use("/api/appeal", appealRouter);
-app.use("/api/qr", qrRouter);
-app.use("/api/template", templateRouter);
+app.use("/api/analyze", requireAuth, analyzeRouter);
+app.use("/api/appeal", requireAuth, appealRouter);
+app.use("/api/qr", requireAuth, qrRouter);
+app.use("/api/template", requireAuth, templateRouter);
 
 app.use((err, _req, res, _next) => {
   console.error(err);

@@ -6,8 +6,16 @@ import QrScannerModal from "../modals/QrScannerModal.jsx";
 import { formatDate } from "../utils/format.js";
 import { detectQrCodes, parseGiroCode } from "../utils/qrScan.js";
 import { findContactByIban } from "../utils/insights.js";
+import { authFetch } from "../utils/apiFetch.js";
 
-export default function ScanView({ docs, contacts, isFirstScan, onScanned, onOpenDoc }) {
+export default function ScanView({
+  docs,
+  contacts,
+  isFirstScan,
+  accessToken,
+  onScanned,
+  onOpenDoc,
+}) {
   const [dragging, setDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState(null);
@@ -27,10 +35,11 @@ export default function ScanView({ docs, contacts, isFirstScan, onScanned, onOpe
       // PDF) takes longer than the Claude round-trip — no race/timeout that
       // could silently drop codes on slow documents.
       const [res, qrCodes] = await Promise.all([
-        fetch(`${API_BASE}/api/analyze`, {
-          method: "POST",
-          body: formData,
-        }),
+        authFetch(
+          `${API_BASE}/api/analyze`,
+          { method: "POST", body: formData },
+          accessToken
+        ),
         detectQrCodes(file, file.type),
       ]);
       if (!res.ok) {
@@ -79,11 +88,15 @@ export default function ScanView({ docs, contacts, isFirstScan, onScanned, onOpe
     setError(null);
     setAnalyzingQr(true);
     try {
-      const res = await fetch(`${API_BASE}/api/qr`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: text }),
-      });
+      const res = await authFetch(
+        `${API_BASE}/api/qr`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content: text }),
+        },
+        accessToken
+      );
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || `HTTP ${res.status}`);
