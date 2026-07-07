@@ -1415,6 +1415,13 @@ export default function App() {
     if (!c) return;
     if (!confirm(`Kontakt "${c.name}" wirklich löschen?`)) return;
     setContacts((prev) => prev.filter((x) => x.id !== selectedContactId));
+    setEvents((prev) =>
+      prev.map((e) =>
+        e.contactId === selectedContactId
+          ? { ...e, contactId: null, orphaned: true }
+          : e
+      )
+    );
     setSelectedContactId(null);
   }
 

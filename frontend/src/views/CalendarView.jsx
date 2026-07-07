@@ -259,6 +259,7 @@ export default function CalendarView({
                   <div className="entry-meta">
                     {e.time || "Termin"}
                     {cName && ` · ${cName}`}
+                    {!cName && e.orphaned && " · Kontakt gelöscht"}
                   </div>
                 </div>
               </button>

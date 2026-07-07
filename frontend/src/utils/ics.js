@@ -1,5 +1,23 @@
 import { isoLocal } from "./format.js";
 
+// Constructs a Date at `time` on `dateIso`. Used together with plusOneHour
+// below so hour-overflow (an event starting at 23:xx) rolls over into the
+// next day (and month/year, if needed) via native Date arithmetic, instead
+// of manual `% 24` math that left the date component unchanged and could
+// produce an end time before the start time.
+function dateTimeAt(dateIso, timeStr) {
+  const [h, m] = timeStr.split(":").map(Number);
+  const d = new Date(dateIso + "T00:00:00");
+  d.setHours(h, m, 0, 0);
+  return d;
+}
+
+function plusOneHour(date) {
+  const d = new Date(date);
+  d.setHours(d.getHours() + 1);
+  return d;
+}
+
 export function bueroItemToGoogleEvent(item, kind) {
   const label =
     kind === "deadline" ? "Frist" : kind === "reminder" ? "Erinnerung" : "Termin";
@@ -25,20 +43,17 @@ export function bueroItemToGoogleEvent(item, kind) {
   };
 
   if (kind === "event" && item.time) {
-    const [h, m] = item.time.split(":").map(Number);
-    const startIso = `${item.date}T${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:00`;
-    const endH = (h + 1) % 24;
-    const endIso = `${item.date}T${String(endH).padStart(2, "0")}:${String(m).padStart(2, "0")}:00`;
+    const start = dateTimeAt(item.date, item.time);
+    const end = plusOneHour(start);
+    const fmt = (d) =>
+      `${isoLocal(d)}T${String(d.getHours()).padStart(2, "0")}:${String(
+        d.getMinutes()
+      ).padStart(2, "0")}:00`;
+    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
     return {
       ...base,
-      start: {
-        dateTime: startIso,
-        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-      },
-      end: {
-        dateTime: endIso,
-        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-      },
+      start: { dateTime: fmt(start), timeZone },
+      end: { dateTime: fmt(end), timeZone },
     };
   }
 
@@ -85,21 +100,15 @@ function icsDate(iso) {
   return iso.replace(/-/g, "");
 }
 
-function icsDateTime(iso, time) {
-  const [h, m] = time.split(":").map(Number);
-  return `${icsDate(iso)}T${String(h).padStart(2, "0")}${String(m).padStart(2, "0")}00`;
+function icsFormatDateTime(d) {
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${icsDate(isoLocal(d))}T${pad(d.getHours())}${pad(d.getMinutes())}00`;
 }
 
 function icsAddDay(iso) {
   const d = new Date(iso + "T00:00:00");
   d.setDate(d.getDate() + 1);
   return isoLocal(d);
-}
-
-function icsAddHour(iso, time) {
-  const [h, m] = time.split(":").map(Number);
-  const endH = (h + 1) % 24;
-  return `${icsDate(iso)}T${String(endH).padStart(2, "0")}${String(m).padStart(2, "0")}00`;
 }
 
 function icsNowStamp() {
@@ -127,8 +136,10 @@ function icsEventLines(entry) {
   ];
 
   if (entry.kind === "event" && entry.time) {
-    lines.push(`DTSTART:${icsDateTime(entry.date, entry.time)}`);
-    lines.push(`DTEND:${icsAddHour(entry.date, entry.time)}`);
+    const start = dateTimeAt(entry.date, entry.time);
+    const end = plusOneHour(start);
+    lines.push(`DTSTART:${icsFormatDateTime(start)}`);
+    lines.push(`DTEND:${icsFormatDateTime(end)}`);
   } else {
     lines.push(`DTSTART;VALUE=DATE:${icsDate(entry.date)}`);
     lines.push(`DTEND;VALUE=DATE:${icsDate(icsAddDay(entry.date))}`);

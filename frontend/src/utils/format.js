@@ -1,4 +1,9 @@
-export const TODAY = new Date("2026-07-02T00:00:00");
+// Local midnight of the actual current date — evaluated once at module
+// load (app launch). Constructed from y/m/d components (not a date
+// string) to avoid any timezone-parsing ambiguity, matching the pattern
+// used elsewhere in the codebase (e.g. CalendarView's month-grid math).
+const now = new Date();
+export const TODAY = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
 export function isoLocal(d) {
   const y = d.getFullYear();

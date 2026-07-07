@@ -139,6 +139,7 @@ export function eventToRow(e, userId) {
     time: e.time || null,
     contact_id: e.contactId || null,
     notes: e.notes || null,
+    orphaned: !!e.orphaned,
   };
 }
 
@@ -151,6 +152,7 @@ export function rowToEvent(row) {
     time: row.time,
     contactId: row.contact_id,
     notes: row.notes,
+    orphaned: !!row.orphaned,
   };
 }
 

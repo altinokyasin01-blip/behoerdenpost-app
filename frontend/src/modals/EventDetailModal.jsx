@@ -20,10 +20,16 @@ export default function EventDetailModal({
           </div>
         </div>
 
-        {contact && (
+        {(contact || event.orphaned) && (
           <section className="detail-section">
             <h3 className="detail-heading">Kontakt</h3>
-            <div className="detail-text">{contact.name}</div>
+            {contact ? (
+              <div className="detail-text">{contact.name}</div>
+            ) : (
+              <p className="detail-text detail-muted">
+                Kontakt wurde gelöscht.
+              </p>
+            )}
           </section>
         )}
 
