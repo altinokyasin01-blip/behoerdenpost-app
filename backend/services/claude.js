@@ -111,7 +111,11 @@ Regeln für "actions":
   * "reminder"  — value = ISO-Datum (YYYY-MM-DD), an dem erinnert werden soll
   * "amount"    — value = Zahl in Euro (Punkt als Dezimaltrennzeichen, kein Währungssymbol)
   * "deadline"  — value = ISO-Datum der Frist (YYYY-MM-DD)
-  * "note"      — value = kurzer Freitext, den der Nutzer als Notiz speichern könnte
+  * "note"      — value = kurzer Freitext, den der Nutzer als Notiz speichern könnte.
+                 Schlage KEINE "note"-Aktion vor, die zum manuellen Scannen/Auslesen
+                 eines im Dokument sichtbaren QR-Codes auffordert — die App liest
+                 QR-Codes bereits automatisch und unabhängig von dir aus, eine
+                 solche Notiz wäre überholt und irreführend.
   * "event"     — value = Objekt { "title": "Kurzer Termintitel",
                                    "date": "YYYY-MM-DD",
                                    "time": "HH:MM" oder null,

@@ -22,6 +22,19 @@ export function getDocsForContact(docs, contact) {
   return docs.filter((d) => senderMatchesContactName(d.sender, contact.name));
 }
 
+// IBAN is a much more reliable identity key than name-substring matching —
+// used to dedupe GiroCode-derived contact suggestions against contacts that
+// already exist (possibly under a slightly different name spelling).
+export function findContactByIban(contacts, iban) {
+  const normalized = (iban || "").replace(/\s/g, "").toUpperCase();
+  if (!normalized) return null;
+  return (
+    contacts.find(
+      (c) => (c.iban || "").replace(/\s/g, "").toUpperCase() === normalized
+    ) || null
+  );
+}
+
 // Contacts whose name matches this sender string (used by CategoriesView
 // to show "verknüpfte Kontakte" for a category — opposite direction of
 // getDocsForContact, same underlying predicate).

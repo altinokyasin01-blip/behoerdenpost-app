@@ -16,14 +16,6 @@ const IMAGE_MIME_TYPES = new Set([
 function decodeCanvas(canvas, jsQR) {
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
   const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  // TEMP DIAGNOSTIC LOGGING — checks whether the canvas actually has pixel
-  // data (e.g. createImageBitmap/PDF render silently producing a 0x0 or
-  // blank canvas would explain "no error, but also no QR found").
-  console.log("[qrScan] decodeCanvas:", {
-    width: canvas.width,
-    height: canvas.height,
-    imageDataBytes: imageData.data.length,
-  });
   const code = jsQR(imageData.data, imageData.width, imageData.height, {
     inversionAttempts: "attemptBoth",
   });
@@ -56,9 +48,38 @@ async function detectQrInPdfFile(file, jsQR) {
     const text = decodeCanvas(canvas, jsQR);
     if (text) found.push(text);
     page.cleanup?.();
+    // Stop after the first page with a QR code — no known multi-QR-per-PDF
+    // use case, and scanning all pages regardless was the main latency cost.
+    if (found.length > 0) break;
   }
   await doc.destroy?.();
   return found;
+}
+
+// EPC069-12 ("GiroCode") — a rigid, line-based SEPA payment QR format. Parsed
+// deterministically here rather than asking Claude to parse it, since the
+// structure is fixed and exact (no room for an LLM to misread a digit).
+// Returns null if `content` isn't a GiroCode or is missing mandatory fields.
+export function parseGiroCode(content) {
+  if (!content || !content.startsWith("BCD")) return null;
+  const lines = content.split("\n").map((l) => l.trim());
+  // Mandatory per spec: service tag(0), version(1), charset(2), id(3),
+  // BIC(4, may be blank), name(5), IBAN(6).
+  if (lines.length < 7) return null;
+  const bic = lines[4] || null;
+  const name = lines[5] || null;
+  const iban = lines[6] ? lines[6].replace(/\s/g, "") : null;
+  if (!name || !iban) return null;
+  const amountMatch = (lines[7] || "").match(/^EUR(\d+(?:[.,]\d{1,2})?)$/i);
+  const amount = amountMatch ? Number(amountMatch[1].replace(",", ".")) : null;
+  const reference = lines[10] || lines[9] || null;
+  return {
+    name,
+    iban,
+    bic,
+    amount: Number.isFinite(amount) ? amount : null,
+    reference,
+  };
 }
 
 // Never throws — QR detection is a nice-to-have enhancement, not core to the
@@ -66,46 +87,29 @@ async function detectQrInPdfFile(file, jsQR) {
 // an empty array. No timeout/race against slowness — callers should await
 // this fully (e.g. via Promise.all) even for large multi-page PDFs.
 export async function detectQrCodes(file, mimeType) {
-  // TEMP DIAGNOSTIC LOGGING — remove once the production no-QR-section bug
-  // is root-caused. Split per path (script load / PDF / image) so the
-  // failure point is visible in the browser console instead of being
-  // swallowed by a single catch-all.
-  console.log("[qrScan] detectQrCodes called", {
-    mimeType,
-    fileName: file?.name,
-    fileSize: file?.size,
-  });
-
   let jsQR;
   try {
     jsQR = await getJsQR();
-  } catch (e) {
-    console.error("[qrScan] getJsQR() failed to load jsQR script:", e);
+  } catch {
     return [];
   }
 
   if (mimeType === "application/pdf") {
     try {
       const found = await detectQrInPdfFile(file, jsQR);
-      console.log(`[qrScan] PDF path finished, found ${found.length} code(s)`, found);
       return [...new Set(found)];
-    } catch (e) {
-      console.error("[qrScan] PDF QR detection failed:", e);
+    } catch {
       return [];
     }
   }
 
   if (IMAGE_MIME_TYPES.has(mimeType)) {
     try {
-      const found = await detectQrInImageFile(file, jsQR);
-      console.log(`[qrScan] Image path finished, found ${found.length} code(s)`, found);
-      return found;
-    } catch (e) {
-      console.error("[qrScan] Image QR detection failed:", e);
+      return await detectQrInImageFile(file, jsQR);
+    } catch {
       return [];
     }
   }
 
-  console.log("[qrScan] unsupported mimetype for QR detection, skipping:", mimeType);
   return [];
 }

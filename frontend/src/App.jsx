@@ -820,9 +820,6 @@ export default function App() {
   function buildDocFromResult(result) {
     const today = isoLocal(TODAY);
     const deadline = result.deadline || null;
-    // TEMP DIAGNOSTIC LOGGING — remove once the production no-QR-section
-    // bug is root-caused.
-    console.log("[App] buildDocFromResult: incoming result.qrCodes =", result.qrCodes);
     return {
       id: "d" + Date.now(),
       title: result.documentType || result.filename || "Dokument",
@@ -849,9 +846,6 @@ export default function App() {
 
   function handlePostScanConfirm(chosenActions, overrides = {}) {
     if (!pendingResult) return;
-    // TEMP DIAGNOSTIC LOGGING — remove once the production no-QR-section
-    // bug is root-caused.
-    console.log("[App] handlePostScanConfirm: pendingResult.qrCodes =", pendingResult.qrCodes);
     const doc = buildDocFromResult({
       ...pendingResult,
       ...(overrides.category !== undefined
@@ -861,7 +855,6 @@ export default function App() {
         ? { recurring: overrides.recurring }
         : {}),
     });
-    console.log("[App] handlePostScanConfirm: doc.qrCodes after buildDocFromResult =", doc.qrCodes);
     const newReminders = [];
     const newEvents = [];
     const noteParts = [];
@@ -1594,6 +1587,7 @@ export default function App() {
         {tab === "scan" && (
           <ScanView
             docs={docs}
+            contacts={contacts}
             isFirstScan={!tooltipsSeen.has("first_scan_done")}
             onScanned={setPendingResult}
             onOpenDoc={setSelectedId}

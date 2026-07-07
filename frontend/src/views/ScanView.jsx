@@ -4,9 +4,10 @@ import { IconUpload, IconCamera, IconQr } from "../components/icons.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import QrScannerModal from "../modals/QrScannerModal.jsx";
 import { formatDate } from "../utils/format.js";
-import { detectQrCodes } from "../utils/qrScan.js";
+import { detectQrCodes, parseGiroCode } from "../utils/qrScan.js";
+import { findContactByIban } from "../utils/insights.js";
 
-export default function ScanView({ docs, isFirstScan, onScanned, onOpenDoc }) {
+export default function ScanView({ docs, contacts, isFirstScan, onScanned, onOpenDoc }) {
   const [dragging, setDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState(null);
@@ -32,17 +33,39 @@ export default function ScanView({ docs, isFirstScan, onScanned, onOpenDoc }) {
         }),
         detectQrCodes(file, file.type),
       ]);
-      // TEMP DIAGNOSTIC LOGGING — remove once the production no-QR-section
-      // bug is root-caused. Logged unconditionally, before the res.ok check,
-      // so it always fires regardless of whether /api/analyze succeeded.
-      console.log("[ScanView] detectQrCodes() returned:", qrCodes);
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || `HTTP ${res.status}`);
       }
       const result = await res.json();
-      const merged = { ...result, filename: file.name, qrCodes };
-      console.log("[ScanView] merged scan result before onScanned:", merged);
+
+      // GiroCode (SEPA-QR) carries structured payment-recipient data —
+      // parsed deterministically rather than sent to Claude. If it doesn't
+      // match an existing contact (by IBAN), synthesize a "contact" action
+      // in the exact same shape Claude's own suggestions use, so it flows
+      // through the existing PostScanModal/handlePostScanConfirm pipeline
+      // unchanged.
+      const actions = Array.isArray(result.actions) ? [...result.actions] : [];
+      for (const code of qrCodes) {
+        const giro = parseGiroCode(code);
+        if (!giro) continue;
+        if (findContactByIban(contacts, giro.iban)) continue;
+        actions.push({
+          type: "contact",
+          label: `Kontakt anlegen: ${giro.name}`,
+          value: {
+            name: giro.name,
+            iban: giro.iban,
+            bic: giro.bic || "",
+            notes: giro.reference
+              ? `GiroCode-Referenz: ${giro.reference}`
+              : "Erkannt aus GiroCode (QR-Code)",
+          },
+          priority: "medium",
+        });
+      }
+
+      const merged = { ...result, actions, filename: file.name, qrCodes };
       onScanned(merged);
     } catch (e) {
       setError(e.message);
