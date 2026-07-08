@@ -240,6 +240,61 @@ export default function HomeView({
         onToggle={() => setShowAllDeadlines((v) => !v)}
       />
 
+      <div className="section-title-row">
+        <h2 className="section-title section-title-inline">Erinnerungen</h2>
+        <button
+          type="button"
+          className="btn-primary btn-primary-sm"
+          onClick={onAddReminder}
+        >
+          + Erinnerung
+        </button>
+      </div>
+      <div className="reminder-list">
+        {openReminders.length === 0 && (
+          <div className="empty">Keine offenen Erinnerungen.</div>
+        )}
+        {(showAllReminders ? openReminders : openReminders.slice(0, 3)).map((r) => {
+          const days = daysUntil(r.date);
+          const level = deadlineLevel(days);
+          return (
+            <div key={r.id} className="card reminder-card">
+              <button
+                type="button"
+                className="reminder-check"
+                onClick={() => onToggleReminder(r.id)}
+                aria-label="Als erledigt markieren"
+              />
+              <button
+                type="button"
+                className="reminder-body"
+                onClick={() => onOpenReminder(r.id)}
+              >
+                <div className="reminder-title">{r.title}</div>
+                <div className={`reminder-meta days-${level}`}>
+                  {formatDate(r.date)}
+                  {" · "}
+                  {days > 0
+                    ? `in ${days} Tag${days === 1 ? "" : "en"}`
+                    : days === 0
+                    ? "heute"
+                    : `${Math.abs(days)} Tag${Math.abs(days) === 1 ? "" : "e"} überfällig`}
+                </div>
+                {r.orphaned && (
+                  <div className="reminder-orphan">Dokument wurde gelöscht</div>
+                )}
+              </button>
+            </div>
+          );
+        })}
+      </div>
+      <ShowMoreButton
+        total={openReminders.length}
+        visibleCount={3}
+        expanded={showAllReminders}
+        onToggle={() => setShowAllReminders((v) => !v)}
+      />
+
       {ongoingWithoutDeadline.length > 0 && (
         <>
           <h2 className="section-title">Aktuell laufend</h2>
@@ -391,61 +446,6 @@ export default function HomeView({
           )}
         </>
       )}
-
-      <div className="section-title-row">
-        <h2 className="section-title section-title-inline">Erinnerungen</h2>
-        <button
-          type="button"
-          className="btn-primary btn-primary-sm"
-          onClick={onAddReminder}
-        >
-          + Erinnerung
-        </button>
-      </div>
-      <div className="reminder-list">
-        {openReminders.length === 0 && (
-          <div className="empty">Keine offenen Erinnerungen.</div>
-        )}
-        {(showAllReminders ? openReminders : openReminders.slice(0, 3)).map((r) => {
-          const days = daysUntil(r.date);
-          const level = deadlineLevel(days);
-          return (
-            <div key={r.id} className="card reminder-card">
-              <button
-                type="button"
-                className="reminder-check"
-                onClick={() => onToggleReminder(r.id)}
-                aria-label="Als erledigt markieren"
-              />
-              <button
-                type="button"
-                className="reminder-body"
-                onClick={() => onOpenReminder(r.id)}
-              >
-                <div className="reminder-title">{r.title}</div>
-                <div className={`reminder-meta days-${level}`}>
-                  {formatDate(r.date)}
-                  {" · "}
-                  {days > 0
-                    ? `in ${days} Tag${days === 1 ? "" : "en"}`
-                    : days === 0
-                    ? "heute"
-                    : `${Math.abs(days)} Tag${Math.abs(days) === 1 ? "" : "e"} überfällig`}
-                </div>
-                {r.orphaned && (
-                  <div className="reminder-orphan">Dokument wurde gelöscht</div>
-                )}
-              </button>
-            </div>
-          );
-        })}
-      </div>
-      <ShowMoreButton
-        total={openReminders.length}
-        visibleCount={3}
-        expanded={showAllReminders}
-        onToggle={() => setShowAllReminders((v) => !v)}
-      />
 
       <h2 className="section-title">Schnellaktion</h2>
       <button className="card action-card" onClick={() => onNav("scan")}>

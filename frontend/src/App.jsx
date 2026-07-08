@@ -83,7 +83,6 @@ import BottomNav from "./components/BottomNav.jsx";
 import HomeView from "./views/HomeView.jsx";
 import CalendarView from "./views/CalendarView.jsx";
 import ScanView from "./views/ScanView.jsx";
-import TemplatesView from "./views/TemplatesView.jsx";
 import CategoriesView from "./views/CategoriesView.jsx";
 import ArchiveView from "./views/ArchiveView.jsx";
 import ContactsView from "./views/ContactsView.jsx";
@@ -1312,13 +1311,13 @@ export default function App() {
     });
   }
 
-  function saveTemplateAsDoc() {
+  function saveTemplateAsDoc(category) {
     if (!templateResult) return;
     const doc = {
       id: "d" + Date.now(),
       title: templateResult.subject || templateResult.templateLabel || "Anschreiben",
       sender: templateResult.sender || "",
-      category: templateResult.category || "Sonstiges",
+      category: category || "Vorlagen",
       date: isoLocal(TODAY),
       deadline: null,
       deadlineType: null,
@@ -1657,11 +1656,7 @@ export default function App() {
             accessToken={session?.access_token}
             onScanned={setPendingResult}
             onOpenDoc={setSelectedId}
-          />
-        )}
-        {tab === "templates" && (
-          <TemplatesView
-            onPick={openTemplateForm}
+            onPickTemplate={openTemplateForm}
             savedTemplates={savedTemplates}
             onUseSavedTemplate={useSavedTemplate}
             onDeleteSavedTemplate={deleteSavedTemplate}
@@ -1902,6 +1897,7 @@ export default function App() {
       {templateResult && (
         <TemplateResultModal
           result={templateResult}
+          existingCategories={existingCategories}
           onClose={() => setTemplateResult(null)}
           onPrint={() => window.print()}
           onSaveAsDoc={saveTemplateAsDoc}

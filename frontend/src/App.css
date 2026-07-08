@@ -805,6 +805,16 @@ input {
   margin-bottom: 12px;
 }
 
+/* Shortcut card (e.g. "Archiv") — not an editable category, visually set
+   apart with a dashed border, same language as .dropzone's affordance. */
+.cat-card-shortcut {
+  border-style: dashed;
+  color: var(--text-muted);
+  text-align: left;
+  font: inherit;
+  width: 100%;
+}
+
 .cat-name {
   font-weight: 600;
   margin-bottom: 4px;

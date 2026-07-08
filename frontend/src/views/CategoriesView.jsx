@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { IconCamera, IconChevron } from "../components/icons.jsx";
+import { IconCamera, IconChevron, IconArchive } from "../components/icons.jsx";
 import { CategoryEditor } from "../components/CategoryChip.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import CardMenu from "../components/CardMenu.jsx";
@@ -400,6 +400,17 @@ export default function CategoriesView({
               />
             </div>
           ))}
+          <button
+            type="button"
+            className="card cat-card cat-card-shortcut"
+            onClick={() => onNav("archive")}
+          >
+            <div className="cat-symbol">
+              <IconArchive size={22} />
+            </div>
+            <div className="cat-name">Archiv</div>
+            <div className="cat-meta">Alle Dokumente durchsuchen</div>
+          </button>
         </div>
       )}
 

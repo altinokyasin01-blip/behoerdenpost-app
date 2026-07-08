@@ -2,7 +2,9 @@ import { useRef, useState } from "react";
 import API_BASE from "../config.js";
 import { IconUpload, IconCamera, IconQr } from "../components/icons.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
+import ShowMoreButton from "../components/ShowMoreButton.jsx";
 import QrScannerModal from "../modals/QrScannerModal.jsx";
+import TemplatesView from "./TemplatesView.jsx";
 import { formatDate } from "../utils/format.js";
 import { detectQrCodes, parseGiroCode } from "../utils/qrScan.js";
 import { findContactByIban } from "../utils/insights.js";
@@ -15,12 +17,17 @@ export default function ScanView({
   accessToken,
   onScanned,
   onOpenDoc,
+  onPickTemplate,
+  savedTemplates,
+  onUseSavedTemplate,
+  onDeleteSavedTemplate,
 }) {
   const [dragging, setDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState(null);
   const [qrOpen, setQrOpen] = useState(false);
   const [analyzingQr, setAnalyzingQr] = useState(false);
+  const [showAllScans, setShowAllScans] = useState(false);
   const fileInputRef = useRef(null);
   const cameraInputRef = useRef(null);
 
@@ -229,7 +236,7 @@ export default function ScanView({
         <>
           <h2 className="section-title">Scan-Verlauf</h2>
           <div className="doc-list">
-            {docs.map((d) => (
+            {(showAllScans ? docs : docs.slice(0, 1)).map((d) => (
               <button
                 key={d.id}
                 type="button"
@@ -246,8 +253,21 @@ export default function ScanView({
               </button>
             ))}
           </div>
+          <ShowMoreButton
+            total={docs.length}
+            visibleCount={1}
+            expanded={showAllScans}
+            onToggle={() => setShowAllScans((v) => !v)}
+          />
         </>
       )}
+
+      <TemplatesView
+        onPick={onPickTemplate}
+        savedTemplates={savedTemplates}
+        onUseSavedTemplate={onUseSavedTemplate}
+        onDeleteSavedTemplate={onDeleteSavedTemplate}
+      />
     </div>
   );
 }

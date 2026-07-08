@@ -1,8 +1,10 @@
 import { useState } from "react";
 import Modal from "../components/Modal.jsx";
+import CategoryChip from "../components/CategoryChip.jsx";
 
 export default function TemplateResultModal({
   result,
+  existingCategories,
   onCopy,
   onPrint,
   onSaveAsDoc,
@@ -12,6 +14,7 @@ export default function TemplateResultModal({
   const [copied, setCopied] = useState(false);
   const [saved, setSaved] = useState(false);
   const [savedAsTemplate, setSavedAsTemplate] = useState(false);
+  const [category, setCategory] = useState(result.category || "Vorlagen");
 
   async function handleCopy() {
     const text = `Betreff: ${result.subject}\n\n${result.body}`;
@@ -26,7 +29,7 @@ export default function TemplateResultModal({
   }
 
   function handleSave() {
-    onSaveAsDoc();
+    onSaveAsDoc(category);
     setSaved(true);
     setTimeout(() => setSaved(false), 1800);
   }
@@ -62,6 +65,15 @@ export default function TemplateResultModal({
         <div className="print-area" aria-hidden="true">
           <h1>{result.subject}</h1>
           <pre>{result.body}</pre>
+        </div>
+
+        <div className="form-field">
+          <label>Kategorie beim Speichern als Dokument</label>
+          <CategoryChip
+            value={category}
+            existingCategories={existingCategories}
+            onChange={setCategory}
+          />
         </div>
 
         <div className="detail-actions detail-actions-stack">

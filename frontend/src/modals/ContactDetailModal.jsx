@@ -1,8 +1,11 @@
+import { useState } from "react";
 import Modal from "../components/Modal.jsx";
+import ShowMoreButton from "../components/ShowMoreButton.jsx";
 import { formatDate } from "../utils/format.js";
 import { getDocsForContact } from "../utils/insights.js";
 
 export default function ContactDetailModal({ contact, docs, onEdit, onDelete, onClose }) {
+  const [showAllDocs, setShowAllDocs] = useState(false);
   const linkedDocs = getDocsForContact(docs, contact);
 
   const fields = [
@@ -72,7 +75,7 @@ export default function ContactDetailModal({ contact, docs, onEdit, onDelete, on
             </p>
           ) : (
             <div className="linked-list">
-              {linkedDocs.map((d) => (
+              {(showAllDocs ? linkedDocs : linkedDocs.slice(0, 1)).map((d) => (
                 <div key={d.id} className="linked-item">
                   <div className="linked-title">{d.title}</div>
                   <div className="linked-meta">
@@ -83,6 +86,12 @@ export default function ContactDetailModal({ contact, docs, onEdit, onDelete, on
               ))}
             </div>
           )}
+          <ShowMoreButton
+            total={linkedDocs.length}
+            visibleCount={1}
+            expanded={showAllDocs}
+            onToggle={() => setShowAllDocs((v) => !v)}
+          />
         </section>
 
         <div className="detail-actions detail-actions-row">

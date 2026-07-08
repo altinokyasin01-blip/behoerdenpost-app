@@ -13,14 +13,12 @@ export default function TemplatesView({
   const [showAll, setShowAll] = useState(false);
 
   return (
-    <div className="view">
-      <header className="view-header">
-        <h1>Vorlagen</h1>
-        <p className="lead">
-          Wähle eine Vorlage, beschreibe kurz den Kontext — Claude verfasst das
-          Anschreiben.
-        </p>
-      </header>
+    <>
+      <h2 className="section-title">Vorlagen</h2>
+      <p className="lead">
+        Wähle eine Vorlage, beschreibe kurz den Kontext — Claude verfasst das
+        Anschreiben.
+      </p>
 
       {savedTemplates && savedTemplates.length > 0 && (
         <>
@@ -82,6 +80,6 @@ export default function TemplatesView({
           </button>
         ))}
       </div>
-    </div>
+    </>
   );
 }
