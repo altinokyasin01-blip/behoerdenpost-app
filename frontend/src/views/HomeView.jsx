@@ -29,14 +29,14 @@ function buildStatusSummary(openDeadlines, pendingPayments) {
   const total = openDeadlines.length;
   if (total === 0) {
     if (pendingPayments.length > 0) {
-      return `Keine offenen Fristen, aber ${pendingPayments.length} offene Ausgabe${
+      return `Keine unerledigten Fristen, aber ${pendingPayments.length} offene Ausgabe${
         pendingPayments.length === 1 ? "" : "n"
       }.`;
     }
-    return "Keine offenen Fristen — alles im grünen Bereich.";
+    return "Keine unerledigten Fristen — alles im grünen Bereich.";
   }
   const urgent = openDeadlines.filter((d) => daysUntil(d.deadline) <= 3).length;
-  const base = `${total} offene Frist${total === 1 ? "" : "en"}`;
+  const base = `${total} unerledigte Frist${total === 1 ? "" : "en"}`;
   if (urgent === 0) {
     return `${base}, keine davon in den nächsten 3 Tagen fällig.`;
   }
@@ -117,7 +117,7 @@ export default function HomeView({
       <section className="stats">
         <div className="stat">
           <div className="stat-value">{allOpenDeadlines.length}</div>
-          <div className="stat-label">Offene Fristen</div>
+          <div className="stat-label">Unerledigte Fristen</div>
         </div>
         <div className="stat">
           <div className="stat-value">{docs.length}</div>
@@ -179,7 +179,10 @@ export default function HomeView({
                         <DeadlineTypeBadge type={d.deadlineType} />
                       )}
                     </div>
-                    <div className="deadline-sender">{d.sender}</div>
+                    <div className="deadline-sender">
+                      {d.sender}
+                      {d.status === "Laufend" && !appealPlanned && " · Laufend"}
+                    </div>
                   </div>
                   <div className={`deadline-days days-${level}`}>
                     {days > 0
@@ -312,6 +315,7 @@ export default function HomeView({
                         Wiederkehrend
                       </span>
                     )}
+                    {d.status === "Laufend" && " · Laufend"}
                   </div>
                   <div className={`linked-meta days-${level}`}>
                     {d.deadline ? `Fällig ${formatDate(d.deadline)}` : "Ohne Frist"}

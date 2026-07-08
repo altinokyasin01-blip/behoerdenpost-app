@@ -150,7 +150,7 @@ export default function CategoriesView({
           <div className="empty">Noch keine Dokumente.</div>
         )}
 
-        <h2 className="section-title">Offene Fristen</h2>
+        <h2 className="section-title">Unerledigte Fristen</h2>
         {catOpenDeadlines.length === 0 ? (
           <div className="empty">Keine offenen Fristen.</div>
         ) : (
@@ -182,7 +182,7 @@ export default function CategoriesView({
           onToggle={() => setShowAllCatDeadlines((v) => !v)}
         />
 
-        <h2 className="section-title">Offene Beträge</h2>
+        <h2 className="section-title">Unerledigte Beträge</h2>
         {catOpenAmounts.length > 0 && (
           <div className="filter-pills">
             {[
@@ -373,7 +373,7 @@ export default function CategoriesView({
                   {g.open > 0 && (
                     <>
                       {" · "}
-                      <span className="text-red">{g.open} offen</span>
+                      <span className="text-red">{g.open} unerledigt</span>
                     </>
                   )}
                 </div>
