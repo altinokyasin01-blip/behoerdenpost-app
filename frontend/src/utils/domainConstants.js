@@ -18,15 +18,6 @@ export const CATEGORY_TO_CONTACT_TYPE = {
   Sonstiges: "Sonstiges",
 };
 
-export const DOC_CATEGORIES = [
-  "Finanzamt",
-  "Krankenkasse",
-  "Vermieter",
-  "Inkasso",
-  "Versicherung",
-  "Sonstiges",
-];
-
 export const DEADLINE_TYPES = ["zahlung", "antwort", "widerspruch", "abgabe", "sonstiges"];
 export const DEADLINE_TYPE_LABEL = {
   zahlung: "Zahlung",

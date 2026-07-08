@@ -1760,6 +1760,7 @@ export default function App() {
         <ManualDeadlineFormModal
           googleConnected={googleConnected}
           googleAutoExport={googleAutoExport}
+          existingCategories={existingCategories}
           onCancel={() => setManualDeadlineFormOpen(false)}
           onSave={saveManualDeadline}
         />

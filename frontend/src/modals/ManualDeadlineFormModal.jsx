@@ -1,15 +1,13 @@
 import { useState } from "react";
 import Modal from "../components/Modal.jsx";
 import GoogleSyncToggle from "../components/GoogleSyncToggle.jsx";
-import {
-  DEADLINE_TYPES,
-  DEADLINE_TYPE_LABEL,
-  DOC_CATEGORIES,
-} from "../utils/domainConstants.js";
+import CategoryChip from "../components/CategoryChip.jsx";
+import { DEADLINE_TYPES, DEADLINE_TYPE_LABEL } from "../utils/domainConstants.js";
 
 export default function ManualDeadlineFormModal({
   googleConnected,
   googleAutoExport,
+  existingCategories,
   onSave,
   onCancel,
 }) {
@@ -130,17 +128,11 @@ export default function ManualDeadlineFormModal({
           </div>
           <div className="form-field">
             <label>Kategorie</label>
-            <select
-              className="form-input"
+            <CategoryChip
               value={form.category}
-              onChange={(e) => set("category", e.target.value)}
-            >
-              {DOC_CATEGORIES.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
+              existingCategories={existingCategories}
+              onChange={(cat) => set("category", cat)}
+            />
           </div>
         </div>
 
