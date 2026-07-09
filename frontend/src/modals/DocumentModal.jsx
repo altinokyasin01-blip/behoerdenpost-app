@@ -4,6 +4,7 @@ import StatusBadge from "../components/StatusBadge.jsx";
 import CategoryChip from "../components/CategoryChip.jsx";
 import DeadlineTypeBadge from "../components/DeadlineTypeBadge.jsx";
 import { daysUntil, deadlineLevel, formatDate } from "../utils/format.js";
+import { printWithTitle } from "../utils/print.js";
 
 export default function DocumentModal({
   doc,
@@ -125,6 +126,10 @@ export default function DocumentModal({
               </button>
             </div>
             <pre className="code-block">{doc.replyDraft}</pre>
+            <p className="print-hint">
+              Tipp: Im Druckdialog „Kopf- und Fußzeilen" deaktivieren für ein
+              sauberes Dokument ohne Browser-Infos.
+            </p>
             <div className="reply-actions">
               <a
                 className="btn-secondary"
@@ -137,7 +142,7 @@ export default function DocumentModal({
               <button
                 type="button"
                 className="btn-secondary"
-                onClick={() => window.print()}
+                onClick={() => printWithTitle(doc.title)}
               >
                 Als PDF speichern
               </button>

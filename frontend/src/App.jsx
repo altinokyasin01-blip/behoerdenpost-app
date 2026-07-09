@@ -1899,7 +1899,6 @@ export default function App() {
           result={templateResult}
           existingCategories={existingCategories}
           onClose={() => setTemplateResult(null)}
-          onPrint={() => window.print()}
           onSaveAsDoc={saveTemplateAsDoc}
           onSaveAsTemplate={saveResultAsTemplate}
         />

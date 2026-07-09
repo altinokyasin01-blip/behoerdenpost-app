@@ -653,6 +653,9 @@ async function generateTemplate({
       .filter(Boolean)
       .join(" | ");
     parts.push(`Referenzdokument: ${line}`);
+    if (linkedDoc.notes) {
+      parts.push(`Notizen zum Referenzdokument (u.a. Aktenzeichen/Kundennummer): ${linkedDoc.notes}`);
+    }
   }
   parts.push(`Kontext des Nutzers:\n${context || "(keiner)"}`);
 

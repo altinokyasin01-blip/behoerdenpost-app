@@ -1,12 +1,12 @@
 import { useState } from "react";
 import Modal from "../components/Modal.jsx";
 import CategoryChip from "../components/CategoryChip.jsx";
+import { printWithTitle } from "../utils/print.js";
 
 export default function TemplateResultModal({
   result,
   existingCategories,
   onCopy,
-  onPrint,
   onSaveAsDoc,
   onSaveAsTemplate,
   onClose,
@@ -62,6 +62,10 @@ export default function TemplateResultModal({
           <pre className="code-block">{result.body}</pre>
         </section>
 
+        <div className="ai-disclaimer">
+          KI generiert — bitte vor Versand selbst prüfen.
+        </div>
+
         <div className="print-area" aria-hidden="true">
           <h1>{result.subject}</h1>
           <pre>{result.body}</pre>
@@ -76,11 +80,15 @@ export default function TemplateResultModal({
           />
         </div>
 
+        <p className="print-hint">
+          Tipp: Im Druckdialog „Kopf- und Fußzeilen" deaktivieren für ein
+          sauberes Dokument ohne Browser-Infos.
+        </p>
         <div className="detail-actions detail-actions-stack">
           <button
             type="button"
             className="btn-primary btn-primary-block"
-            onClick={onPrint}
+            onClick={() => printWithTitle(result.subject)}
           >
             Als PDF drucken
           </button>

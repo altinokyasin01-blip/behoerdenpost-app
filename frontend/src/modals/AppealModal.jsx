@@ -131,7 +131,7 @@ export default function AppealModal({
         </div>
 
         <div className="appeal-decision">Die Entscheidung liegt bei dir.</div>
-        <div className="appeal-disclaimer">
+        <div className="ai-disclaimer">
           Einschätzung basiert auf KI, kein Rechtsrat.
         </div>
       </div>
