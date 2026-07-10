@@ -704,6 +704,7 @@ export default function App() {
       contacts,
       reminders,
       events,
+      savedTemplates,
       fileIndex,
     };
     const blob = new Blob([JSON.stringify(bundle, null, 2)], {
@@ -736,6 +737,7 @@ export default function App() {
           supabase.from("contacts").delete().eq("user_id", userId),
           supabase.from("reminders").delete().eq("user_id", userId),
           supabase.from("events").delete().eq("user_id", userId),
+          supabase.from("saved_templates").delete().eq("user_id", userId),
         ]);
       } catch (e) {
         console.error("Cloud delete failed:", e);
@@ -1927,10 +1929,6 @@ export default function App() {
           onOpenEvent={setSelectedEventId}
           onOpenLocalFile={openLocalFile}
         />
-      )}
-
-      {disclaimerOpen && (
-        <DisclaimerModal onAcknowledge={acknowledgeDisclaimer} />
       )}
 
       {migrationPrompt && (

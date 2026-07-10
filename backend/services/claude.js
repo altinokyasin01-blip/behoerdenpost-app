@@ -638,7 +638,9 @@ async function generateTemplate({
   linkedDoc,
 }) {
   if (!TEMPLATE_TYPES.has(templateType)) {
-    throw new Error("Unknown template type");
+    const err = new Error("Unknown template type");
+    err.status = 400;
+    throw err;
   }
   const parts = [`Vorlagentyp: ${TEMPLATE_LABELS[templateType]}`];
   if (senderName) parts.push(`Absender: ${senderName}`);
