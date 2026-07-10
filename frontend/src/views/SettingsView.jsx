@@ -4,7 +4,7 @@ import LegalModal from "../modals/LegalModal.jsx";
 import { THEME_CHOICES, THEME_LABEL } from "../utils/storage.js";
 import { isValidEmail, formatDate } from "../utils/format.js";
 import { APP_VERSION, SUPPORT_EMAIL } from "../utils/legal.jsx";
-import { GOOGLE_CONFIGURED } from "../utils/google.js";
+import { GOOGLE_CONFIGURED, GOOGLE_COMING_SOON } from "../utils/google.js";
 import { FS_SUPPORTED, FILE_INDEX_MAX_FILES } from "../utils/fileIndex.js";
 
 export default function SettingsView({
@@ -228,7 +228,22 @@ export default function SettingsView({
       {/* GOOGLE */}
       <section className="settings-section">
         <h2 className="settings-section-title">Google Calendar</h2>
-        {!GOOGLE_CONFIGURED ? (
+        {GOOGLE_COMING_SOON ? (
+          <div className="settings-group">
+            <div className="settings-row settings-row-muted">
+              <div className="settings-row-body">
+                <div className="settings-row-label">
+                  Google-Kalender verknüpfen
+                </div>
+                <div className="settings-row-sub">
+                  Fristen und Termine automatisch mit Google Calendar
+                  synchronisieren — kommt bald.
+                </div>
+              </div>
+              <span className="badge badge-gray">Coming soon</span>
+            </div>
+          </div>
+        ) : !GOOGLE_CONFIGURED ? (
           <div className="card empty-card">
             <div className="empty-title">Noch nicht konfiguriert</div>
             <div className="empty-sub">
@@ -311,11 +326,13 @@ export default function SettingsView({
             </div>
           </div>
         )}
-        <p className="settings-hint">
-          Deine Google-Daten verlassen nie Büro ohne deine Erlaubnis. Alle
-          Aufrufe laufen direkt aus dem Browser gegen die Google API — kein
-          Server dazwischen.
-        </p>
+        {!GOOGLE_COMING_SOON && (
+          <p className="settings-hint">
+            Deine Google-Daten verlassen nie Büro ohne deine Erlaubnis. Alle
+            Aufrufe laufen direkt aus dem Browser gegen die Google API — kein
+            Server dazwischen.
+          </p>
+        )}
       </section>
 
       {/* KALENDER-EXPORT (.ics) */}

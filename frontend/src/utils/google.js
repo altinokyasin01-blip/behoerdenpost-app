@@ -7,6 +7,10 @@ export const GOOGLE_TOKEN_KEY = "buero_google_token";
 export const GOOGLE_AUTO_EXPORT_KEY = "buero_google_auto_export";
 export const GOOGLE_SHOW_CALENDAR_KEY = "buero_google_show_calendar";
 export const GOOGLE_CONFIGURED = !!GOOGLE_CLIENT_ID;
+// Temporär: Google-Verknüpfung als "Coming soon" überdecken. Auf false
+// setzen, um die Funktion wieder freizuschalten — Code, Token-Handling
+// und UI dahinter bleiben vollständig erhalten.
+export const GOOGLE_COMING_SOON = true;
 
 let gisPromise = null;
 function getGoogleOAuth2() {

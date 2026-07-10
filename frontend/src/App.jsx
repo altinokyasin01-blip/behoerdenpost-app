@@ -52,6 +52,7 @@ import {
   googleListEvents,
   loadGoogleToken,
   GOOGLE_CONFIGURED,
+  GOOGLE_COMING_SOON,
   GOOGLE_TOKEN_KEY,
   GOOGLE_AUTO_EXPORT_KEY,
   GOOGLE_SHOW_CALENDAR_KEY,
@@ -200,8 +201,13 @@ export default function App() {
     setBrowserTipSeen(true);
   }
 
+  // Coming-soon-Modus deckt alle Google-Funktionen ab: Modals, Kalender-
+  // Overlay und Auto-Export hängen sämtlich an googleConnected. Ein evtl.
+  // vorhandenes Token bleibt in localStorage erhalten.
   const googleConnected =
-    !!googleToken && googleToken.expiresAt > Date.now();
+    !GOOGLE_COMING_SOON &&
+    !!googleToken &&
+    googleToken.expiresAt > Date.now();
   const [eventFormOpen, setEventFormOpen] = useState(false);
   const [eventFormMode, setEventFormMode] = useState("add");
   const [eventFormPrefill, setEventFormPrefill] = useState(null);
@@ -549,6 +555,7 @@ export default function App() {
   }, [googleShowCalendar]);
 
   async function connectGoogle() {
+    if (GOOGLE_COMING_SOON) return;
     if (!GOOGLE_CONFIGURED) {
       alert(
         "Google Client-ID nicht konfiguriert. Setze VITE_GOOGLE_CLIENT_ID in der .env-Datei."
