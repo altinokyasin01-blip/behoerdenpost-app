@@ -45,6 +45,7 @@ export function docToRow(doc, userId) {
     qr_codes: Array.isArray(doc.qrCodes) ? doc.qrCodes : [],
     filename: doc.filename || null,
     scan_date: doc.date || null,
+    source: doc.source || null,
   };
 }
 
@@ -68,6 +69,7 @@ export function rowToDoc(row) {
     qrCodes: Array.isArray(row.qr_codes) ? row.qr_codes : [],
     filename: row.filename,
     date: row.scan_date || (row.created_at ? row.created_at.slice(0, 10) : null),
+    source: row.source || null,
   };
 }
 
