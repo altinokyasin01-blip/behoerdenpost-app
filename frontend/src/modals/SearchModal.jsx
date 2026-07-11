@@ -6,7 +6,7 @@ import { IconSearch } from "../components/icons.jsx";
 import { formatAmount, formatDate } from "../utils/format.js";
 
 const SEARCH_TIP =
-  "Suche nach IBANs, Beträgen, Namen oder Daten — alles was in Büro gespeichert ist.";
+  "Suche nach Absendern oder Stichworten aus dem Brief — auch im Volltext gescannter Dokumente.";
 
 function normalizeCompact(s) {
   return String(s || "").replace(/[\s\-./]/g, "").toLowerCase();
@@ -240,7 +240,7 @@ export default function SearchModal({
             ref={inputRef}
             type="text"
             className="search-input-large"
-            placeholder="Nach allem suchen — Namen, Beträge, IBANs, Datum…"
+            placeholder="Nach allem suchen — Finanzamt, Mahnung, Kündigung…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             autoComplete="off"
@@ -257,19 +257,10 @@ export default function SearchModal({
             <h3 className="search-empty-title">Was suchst du?</h3>
             <ul className="search-hints">
               <li>
-                <strong>230,50</strong> — findet Dokumente mit diesem Betrag
+                <strong>Finanzamt</strong> — Absender oder Kontaktname, auch als Bruchstück
               </li>
               <li>
-                <strong>DE12 3456…</strong> — findet Kontakte per IBAN, auch mit Leerzeichen
-              </li>
-              <li>
-                <strong>15.07.2026</strong> — findet Fristen und Termine an diesem Tag
-              </li>
-              <li>
-                <strong>Finanzamt</strong> — Absender, Kontaktnamen, Kategorien
-              </li>
-              <li>
-                <strong>Bußgeld</strong> — sucht auch in Zusammenfassungen und Notizen
+                <strong>Mahnung</strong> — ein Stichwort aus dem Brief, auch im Volltext gefunden
               </li>
             </ul>
             <div className="search-shortcut-hint">
