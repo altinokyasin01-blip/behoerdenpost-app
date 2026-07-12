@@ -12,7 +12,9 @@ export const LEGAL_TEXTS = {
         <p>
           Yasin Altinok
           <br />
-          [DEINE ADRESSE]
+          Stolberger Straße 209
+          <br />
+          52068 Aachen
           <br />
           Deutschland
         </p>
@@ -25,10 +27,6 @@ export const LEGAL_TEXTS = {
           <strong>Verantwortlich für den Inhalt nach § 55 Abs. 2 RStV</strong>
           <br />
           Yasin Altinok
-        </p>
-        <p className="detail-muted">
-          Ersetze die Platzhalter in eckigen Klammern durch deine echten
-          Angaben, bevor Büro öffentlich verfügbar wird.
         </p>
       </>
     ),
