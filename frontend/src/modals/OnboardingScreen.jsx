@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../supabase.js";
 import { isValidEmail } from "../utils/format.js";
+import LegalModal from "./LegalModal.jsx";
 
 export default function OnboardingScreen({ session, skipWelcome, onDone }) {
   // Initial step:
@@ -18,6 +19,7 @@ export default function OnboardingScreen({ session, skipWelcome, onDone }) {
   const [error, setError] = useState(null);
   const [info, setInfo] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [legalOpen, setLegalOpen] = useState(null);
 
   // If Supabase session appears while on step 2, advance to step 3.
   useEffect(() => {
@@ -166,6 +168,25 @@ export default function OnboardingScreen({ session, skipWelcome, onDone }) {
             >
               {loading ? "Erstelle Konto…" : "Konto erstellen"}
             </button>
+            <p className="onboarding-legal-hint">
+              Mit der Registrierung akzeptierst du die{" "}
+              <button
+                type="button"
+                className="legal-inline-link"
+                onClick={() => setLegalOpen("agb")}
+              >
+                Nutzungsbedingungen
+              </button>{" "}
+              und die{" "}
+              <button
+                type="button"
+                className="legal-inline-link"
+                onClick={() => setLegalOpen("datenschutz")}
+              >
+                Datenschutzerklärung
+              </button>
+              .
+            </p>
             <div className="auth-links">
               <button
                 type="button"
@@ -334,6 +355,9 @@ export default function OnboardingScreen({ session, skipWelcome, onDone }) {
           </>
         )}
       </div>
+      {legalOpen && (
+        <LegalModal type={legalOpen} onClose={() => setLegalOpen(null)} />
+      )}
     </div>
   );
 }
