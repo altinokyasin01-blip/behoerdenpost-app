@@ -1,5 +1,10 @@
 export const APP_VERSION = "0.1.0";
 export const SUPPORT_EMAIL = "support@buero.app";
+// Eigenständige Versionierung für die Datenschutzerklärung — unabhängig von
+// APP_VERSION (Software-Release), da Rechtstexte nach eigenem Anlass
+// (z.B. neue Server-Standorte) revisioniert werden, nicht nach App-Releases.
+const PRIVACY_VERSION = "0.3.0";
+const PRIVACY_DATE = "12.07.2026";
 
 export const LEGAL_TEXTS = {
   impressum: {
@@ -36,49 +41,114 @@ export const LEGAL_TEXTS = {
     body: (
       <>
         <p>
-          Deine Privatsphäre ist der Kern der App. Büro ist bewusst als lokale
-          Web-App gebaut — deine Daten liegen bei dir, nicht bei uns.
+          Deine Privatsphäre ist uns wichtig. Diese Erklärung beschreibt,
+          welche Daten Büro verarbeitet, wo sie gespeichert werden und was
+          mit ihnen passiert.
         </p>
         <p>
-          <strong>Was auf deinem Gerät gespeichert wird</strong>
+          <strong>Was wir speichern und wo</strong>
           <br />
-          Dokumente, Kontakte, Erinnerungen, Termine, App-Einstellungen und
-          (wenn du Ordner freigibst) der extrahierte Text lokaler Dateien.
-          Alles landet ausschließlich in localStorage und IndexedDB deines
-          Browsers — nicht bei uns, nicht auf fremden Servern.
+          Deine Dokumente, Kontakte, Erinnerungen, Termine und
+          App-Einstellungen werden in einer Datenbank bei{" "}
+          <strong>Supabase</strong> gespeichert, gehostet in der
+          Europäischen Union (Frankreich). Der Zugriff ist durch eine
+          gesicherte Anmeldung (Supabase Auth) sowie durch
+          Zeilenebene-Sicherheit (Row Level Security) so eingeschränkt, dass
+          ausschließlich du selbst — authentifiziert über dein Konto — auf
+          deine eigenen Daten zugreifen kannst.
         </p>
         <p>
-          <strong>Was temporär an externe Dienste geht</strong>
+          Supabase ist ein US-amerikanisches Unternehmen. Auch bei
+          Speicherung auf Servern innerhalb der EU kann dies bedeuten, dass
+          US-Behörden unter bestimmten gesetzlichen Voraussetzungen (US
+          CLOUD Act) Zugriff auf die Daten verlangen könnten. Mit Supabase
+          besteht ein Auftragsverarbeitungsvertrag (AVV) gemäß Art. 28
+          DSGVO.
+        </p>
+        <p>
+          Zusätzlich werden einige Daten lokal in deinem Browser
+          zwischengespeichert (z.B. für Offline-Zugriff und Performance) —
+          das ist eine Ergänzung, kein Ersatz für die Cloud-Speicherung bei
+          Supabase.
+        </p>
+        <p>
+          Wenn du Ordner über die File-System-Access-Funktion freigibst (nur
+          Chrome/Edge Desktop), wird der extrahierte Text lokal in deinem
+          Browser verarbeitet und bleibt auf deinem Gerät — diese Funktion
+          läuft unabhängig von der Server-Speicherung.
+        </p>
+        <p>
+          <strong>Was an unser Backend geht</strong>
           <br />
-          Für die KI-Analyse werden Dokumente und Textinhalte kurzzeitig an
-          die Anthropic Claude API übertragen: beim Scannen das Bild/PDF, bei
-          Vorlagen/Widerspruch-Check/QR-Analyse der jeweilige Textinhalt.
-          Diese Übertragung ist für die Analyse notwendig; die Daten werden
-          von Anthropic gemäß deren Datenschutzerklärung
-          (anthropic.com/privacy) behandelt und laut Anbieter{" "}
-          <strong>nicht dauerhaft zu Trainingszwecken gespeichert</strong>.
-          Bei aktivierter Google-Calendar-Verknüpfung fließen die von dir
-          erstellten Fristen/Termine direkt aus deinem Browser zur Google
-          Calendar API — kein Backend-Umweg über uns.
+          Büro nutzt ein eigenes Backend, gehostet bei{" "}
+          <strong>Railway</strong> in der Europäischen Union (Amsterdam,
+          Niederlande), über das Anfragen an die Anthropic Claude API
+          laufen. Alle Anfragen an das Backend sind durch eine
+          Authentifizierung (JWT über Supabase) geschützt — nur du kannst
+          mit deinem eigenen Konto Analysen auslösen. Mit Railway besteht
+          ein Auftragsverarbeitungsvertrag (AVV) gemäß Art. 28 DSGVO.
+        </p>
+        <p>
+          <strong>Was an externe Dienste außerhalb der EU geht</strong>
+        </p>
+        <p>
+          <strong>Anthropic Claude API (USA):</strong> Für die KI-Analyse
+          werden Dokumente und Textinhalte über unser Backend an die
+          Anthropic Claude API übertragen — beim Scannen das Bild/PDF, bei
+          Vorlagen, Widerspruch-Check und QR-Analyse der jeweilige
+          Textinhalt. Diese Übertragung in die USA ist für die Kernfunktion
+          der App (KI-gestützte Dokumentenanalyse) technisch notwendig. Die
+          Datenübermittlung erfolgt auf Grundlage von
+          Standardvertragsklauseln (SCC) bzw. den von Anthropic
+          bereitgestellten Datenschutzgarantien. Die Daten werden von
+          Anthropic gemäß deren Datenschutzerklärung behandelt
+          (anthropic.com/privacy) und laut Anbieter nicht dauerhaft zu
+          Trainingszwecken der Basismodelle verwendet.
+        </p>
+        <p>
+          <strong>Google Calendar API (optional, aktuell nicht aktiv):</strong>{" "}
+          Bei aktivierter Google-Calendar-Verknüpfung fließen von dir
+          erstellte Fristen/Termine direkt aus deinem Browser zur Google
+          Calendar API. Diese Funktion ist derzeit deaktiviert
+          („Coming soon") und wird erst nach erneuter Aktivierung genutzt.
         </p>
         <p>
           <strong>Was NICHT passiert</strong>
           <br />
-          Kein Tracking, keine Analytics, keine Cookies. Keine Weitergabe an
-          Dritte über die genannten APIs hinaus. Kein eigener Server, der
-          deine Daten dauerhaft speichert.
+          Kein Tracking, keine Analytics, keine Werbe-Cookies. Keine
+          Weitergabe deiner Daten an Dritte außer den oben genannten, für
+          den Betrieb der App notwendigen Diensten (Supabase, Railway,
+          Anthropic, optional Google).
         </p>
         <p>
           <strong>Deine Rechte nach DSGVO</strong>
-          <br />
-          Auskunft: „Daten exportieren" liefert eine vollständige JSON-Kopie.
-          Löschung: „Alle Daten löschen" wischt alles vom Gerät. Widerruf:
-          einfach nicht mehr benutzen.
         </p>
+        <ul>
+          <li>
+            <strong>Auskunft:</strong> „Daten exportieren" liefert eine
+            vollständige JSON-Kopie deiner bei uns gespeicherten Daten.
+          </li>
+          <li>
+            <strong>Löschung:</strong> „Alle Daten löschen" entfernt deine
+            Daten sowohl lokal als auch aus der Supabase-Datenbank.
+          </li>
+          <li>
+            <strong>Widerruf/Kontoschließung:</strong> Kontaktiere uns unter
+            kontakt@meinbuero.app, um dein Konto und alle zugehörigen Daten
+            vollständig löschen zu lassen.
+          </li>
+          <li>
+            <strong>Beschwerderecht:</strong> Du hast das Recht, dich bei der
+            für dich zuständigen Datenschutz-Aufsichtsbehörde zu beschweren.
+          </li>
+        </ul>
         <p>
           <strong>Verantwortlich</strong>
           <br />
           Siehe Impressum.
+        </p>
+        <p className="detail-muted">
+          Stand: {PRIVACY_DATE} — Version {PRIVACY_VERSION}
         </p>
       </>
     ),
