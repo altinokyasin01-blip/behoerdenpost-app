@@ -19,6 +19,10 @@ async function requireAuth(req, res, next) {
     return res.status(401).json({ error: "Invalid or expired session" });
   }
   req.userId = data.user.id;
+  // Stashed for downstream middleware (e.g. quota checks) that need to call
+  // Supabase RPCs scoped to this user's own JWT, so auth.uid() resolves
+  // correctly on the Postgres side — the anon key alone doesn't carry it.
+  req.accessToken = token;
   next();
 }
 

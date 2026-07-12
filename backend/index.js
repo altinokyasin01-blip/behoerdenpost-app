@@ -6,8 +6,10 @@ const analyzeRouter = require("./routes/analyze");
 const appealRouter = require("./routes/appeal");
 const qrRouter = require("./routes/qr");
 const templateRouter = require("./routes/template");
+const billingRouter = require("./routes/billing");
 const requireAuth = require("./middleware/requireAuth");
 const { ipRateLimit, userRateLimit } = require("./middleware/rateLimit");
+const { checkQuota, requireTier } = require("./middleware/quota");
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -26,10 +28,39 @@ app.get("/api/health", (_req, res) => {
   res.json({ status: "ok" });
 });
 
-app.use("/api/analyze", ipRateLimit, requireAuth, userRateLimit, analyzeRouter);
-app.use("/api/appeal", ipRateLimit, requireAuth, userRateLimit, appealRouter);
-app.use("/api/qr", ipRateLimit, requireAuth, userRateLimit, qrRouter);
-app.use("/api/template", ipRateLimit, requireAuth, userRateLimit, templateRouter);
+app.use(
+  "/api/analyze",
+  ipRateLimit,
+  requireAuth,
+  userRateLimit,
+  checkQuota("scan"),
+  analyzeRouter
+);
+app.use(
+  "/api/appeal",
+  ipRateLimit,
+  requireAuth,
+  userRateLimit,
+  requireTier("smart"),
+  appealRouter
+);
+app.use(
+  "/api/qr",
+  ipRateLimit,
+  requireAuth,
+  userRateLimit,
+  checkQuota("scan"),
+  qrRouter
+);
+app.use(
+  "/api/template",
+  ipRateLimit,
+  requireAuth,
+  userRateLimit,
+  checkQuota("template"),
+  templateRouter
+);
+app.use("/api/billing", ipRateLimit, requireAuth, billingRouter);
 
 app.use((err, _req, res, _next) => {
   console.error(err);
