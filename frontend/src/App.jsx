@@ -524,6 +524,16 @@ export default function App() {
   }, [billingRedirect, dataReady]);
 
   useEffect(() => {
+    if (tab !== "settings" || !dataReady) return;
+    // billingStatus wird sonst nur beim App-Start geladen -- ein zwischen-
+    // durch verbrauchter Credit (Scan/Vorlage, serverseitig dekrementiert)
+    // wäre im Shop-Bereich sonst bis zum nächsten Reload veraltet. Beim
+    // Öffnen der Einstellungen frisch nachladen.
+    refreshBillingStatus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, dataReady]);
+
+  useEffect(() => {
     function onPrompt(e) {
       e.preventDefault();
       setInstallPromptEvent(e);
