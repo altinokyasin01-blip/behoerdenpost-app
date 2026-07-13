@@ -103,6 +103,7 @@ import TemplateFormModal from "./modals/TemplateFormModal.jsx";
 import TemplateResultModal from "./modals/TemplateResultModal.jsx";
 import DisclaimerModal from "./modals/DisclaimerModal.jsx";
 import TarifOnboardingModal from "./modals/TarifOnboardingModal.jsx";
+import UpsellModal from "./modals/UpsellModal.jsx";
 import AuthConfigMissingScreen from "./modals/AuthConfigMissingScreen.jsx";
 import MigrationPromptModal from "./modals/MigrationPromptModal.jsx";
 import OnboardingScreen from "./modals/OnboardingScreen.jsx";
@@ -215,6 +216,20 @@ export default function App() {
   // während des Trials (Tag 2/3) wieder erscheinen, nicht nur einmal für
   // immer weggeklickt werden können wie die Tab-Tips.
   const [trialBannerDismissed, setTrialBannerDismissed] = useState(false);
+  const [upsellAction, setUpsellAction] = useState(null);
+
+  function openUpsell(action) {
+    setUpsellAction(action);
+  }
+
+  function closeUpsell() {
+    setUpsellAction(null);
+  }
+
+  function goToShopFromUpsell() {
+    setUpsellAction(null);
+    navigate("settings");
+  }
 
   // Coming-soon-Modus deckt alle Google-Funktionen ab: Modals, Kalender-
   // Overlay und Auto-Export hängen sämtlich an googleConnected. Ein evtl.
@@ -1412,6 +1427,13 @@ export default function App() {
       },
       session?.access_token
     );
+    if (res.status === 402) {
+      // Formular schließen statt generischer Inline-Fehlermeldung — der
+      // Upsell übernimmt die Erklärung.
+      setTemplateFormType(null);
+      openUpsell("template");
+      return;
+    }
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
       throw new Error(data.error || `HTTP ${res.status}`);
@@ -1779,6 +1801,7 @@ export default function App() {
             isFirstScan={!tooltipsSeen.has("first_scan_done")}
             accessToken={session?.access_token}
             onScanned={setPendingResult}
+            onQuotaExceeded={openUpsell}
             onOpenDoc={setSelectedId}
             onPickTemplate={openTemplateForm}
             savedTemplates={savedTemplates}
@@ -1934,6 +1957,10 @@ export default function App() {
             onClose={() => setAppealDocId(null)}
             onScheduleReminder={handleAppealScheduleReminder}
             onShowReplyDraft={handleAppealShowReplyDraft}
+            onQuotaExceeded={() => {
+              setAppealDocId(null);
+              openUpsell("appeal");
+            }}
           />
         );
       })()}
@@ -2094,6 +2121,14 @@ export default function App() {
       )}
 
       {tarifIntroOpen && <TarifOnboardingModal onClose={closeTarifIntro} />}
+
+      {upsellAction && (
+        <UpsellModal
+          action={upsellAction}
+          onClose={closeUpsell}
+          onOpenShop={goToShopFromUpsell}
+        />
+      )}
 
       {syncError && (
         <div className="sync-error-toast" role="alert">

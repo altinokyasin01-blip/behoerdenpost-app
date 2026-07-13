@@ -16,6 +16,7 @@ export default function ScanView({
   isFirstScan,
   accessToken,
   onScanned,
+  onQuotaExceeded,
   onOpenDoc,
   onPickTemplate,
   savedTemplates,
@@ -49,6 +50,10 @@ export default function ScanView({
         ),
         detectQrCodes(file, file.type),
       ]);
+      if (res.status === 402) {
+        onQuotaExceeded("scan");
+        return;
+      }
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || `HTTP ${res.status}`);
@@ -104,6 +109,10 @@ export default function ScanView({
         },
         accessToken
       );
+      if (res.status === 402) {
+        onQuotaExceeded("scan");
+        return;
+      }
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || `HTTP ${res.status}`);

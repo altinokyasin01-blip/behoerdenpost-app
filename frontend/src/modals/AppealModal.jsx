@@ -10,6 +10,7 @@ export default function AppealModal({
   onClose,
   onScheduleReminder,
   onShowReplyDraft,
+  onQuotaExceeded,
 }) {
   const [analysis, setAnalysis] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -32,6 +33,10 @@ export default function AppealModal({
           },
           accessToken
         );
+        if (res.status === 402) {
+          if (!cancelled) onQuotaExceeded();
+          return;
+        }
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
           throw new Error(data.error || `HTTP ${res.status}`);
