@@ -25,6 +25,7 @@ import {
   TIPS_SEEN_KEY,
   INSTALL_DISMISSED_KEY,
   BROWSER_TIP_SEEN_KEY,
+  TARIF_INTRO_SEEN_KEY,
   BROWSER_TIP_TEXT,
   loadBoolPref,
   loadContacts,
@@ -101,6 +102,7 @@ import SearchModal from "./modals/SearchModal.jsx";
 import TemplateFormModal from "./modals/TemplateFormModal.jsx";
 import TemplateResultModal from "./modals/TemplateResultModal.jsx";
 import DisclaimerModal from "./modals/DisclaimerModal.jsx";
+import TarifOnboardingModal from "./modals/TarifOnboardingModal.jsx";
 import AuthConfigMissingScreen from "./modals/AuthConfigMissingScreen.jsx";
 import MigrationPromptModal from "./modals/MigrationPromptModal.jsx";
 import OnboardingScreen from "./modals/OnboardingScreen.jsx";
@@ -208,6 +210,7 @@ export default function App() {
   const [billingRedirect] = useState(() =>
     new URLSearchParams(window.location.search).get("billing")
   );
+  const [tarifIntroOpen, setTarifIntroOpen] = useState(false);
 
   // Coming-soon-Modus deckt alle Google-Funktionen ab: Modals, Kalender-
   // Overlay und Auto-Export hängen sämtlich an googleConnected. Ein evtl.
@@ -445,6 +448,29 @@ export default function App() {
     // new users after they finish step 3). Docs snapshot at that moment is fine.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onboardingDone]);
+
+  useEffect(() => {
+    if (!onboardingDone) return;
+    let seen = false;
+    try {
+      seen = !!localStorage.getItem(TARIF_INTRO_SEEN_KEY);
+    } catch {
+      // ignore
+    }
+    if (!seen) setTarifIntroOpen(true);
+    // Gleiches Muster wie oben: nur beim Übergang zu onboardingDone prüfen,
+    // nicht bei jedem Re-Render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onboardingDone]);
+
+  function closeTarifIntro() {
+    try {
+      localStorage.setItem(TARIF_INTRO_SEEN_KEY, "1");
+    } catch {
+      // ignore
+    }
+    setTarifIntroOpen(false);
+  }
 
   useEffect(() => {
     if (tab !== "calendar") return;
@@ -2027,6 +2053,8 @@ export default function App() {
           onDone={() => setSuccessToast(null)}
         />
       )}
+
+      {tarifIntroOpen && <TarifOnboardingModal onClose={closeTarifIntro} />}
 
       {syncError && (
         <div className="sync-error-toast" role="alert">
