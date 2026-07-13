@@ -7,6 +7,7 @@ const appealRouter = require("./routes/appeal");
 const qrRouter = require("./routes/qr");
 const templateRouter = require("./routes/template");
 const billingRouter = require("./routes/billing");
+const stripeWebhookHandler = require("./routes/stripeWebhook");
 const requireAuth = require("./middleware/requireAuth");
 const { ipRateLimit, userRateLimit } = require("./middleware/rateLimit");
 const { checkQuota, requireTier } = require("./middleware/quota");
@@ -22,6 +23,19 @@ app.set("trust proxy", 1);
 app.use(cors({
   origin: '*'
 }));
+
+// MUSS vor express.json() registriert werden: Stripes constructEvent()
+// braucht die unveränderten Roh-Bytes des Bodys für die Signaturprüfung.
+// Steht deshalb bewusst außerhalb der /api/billing-Router-Kette (die läuft
+// hinter requireAuth, ein Stripe-Webhook hat aber kein User-JWT) und vor
+// dem globalen JSON-Parser unten.
+app.post(
+  "/api/billing/webhook",
+  ipRateLimit,
+  express.raw({ type: "application/json" }),
+  stripeWebhookHandler
+);
+
 app.use(express.json({ limit: "20mb" }));
 
 app.get("/api/health", (_req, res) => {
