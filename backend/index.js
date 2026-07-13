@@ -58,14 +58,10 @@ app.use(
   requireTier("smart"),
   appealRouter
 );
-app.use(
-  "/api/qr",
-  ipRateLimit,
-  requireAuth,
-  userRateLimit,
-  checkQuota("scan"),
-  qrRouter
-);
+// Kein checkQuota-Middleware hier: /api/qr gated INNERHALB der Route, damit
+// ein deterministisch geparster GiroCode (kein Claude-Call) komplett
+// quota-frei bleibt. Nur der Claude-Pfad (Nicht-GiroCode) prüft/verbraucht.
+app.use("/api/qr", ipRateLimit, requireAuth, userRateLimit, qrRouter);
 app.use(
   "/api/template",
   ipRateLimit,

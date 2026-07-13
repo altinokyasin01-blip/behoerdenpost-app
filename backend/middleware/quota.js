@@ -11,21 +11,32 @@ function supabaseAsUser(accessToken) {
   });
 }
 
-// Gates document scans (/api/analyze, /api/qr) and template creation
-// (/api/template) against the caller's quota. This is a READ-ONLY peek that
-// runs BEFORE the Claude API call, so an over-limit request never reaches
-// (and never pays for) Claude — but it does NOT consume anything yet. The
-// actual consumption happens via consumeQuota() AFTER a successful Claude
-// call, so a failed analysis doesn't burn a scan/credit.
-function checkQuota(action) {
+// READ-ONLY quota peek — returns whether the caller has quota available,
+// without consuming anything. Used both by the checkQuota middleware and
+// directly inside routes that only need to gate a subset of requests (e.g.
+// /api/qr, where a deterministic GiroCode needs no quota at all).
+async function hasQuota(action, accessToken) {
   const rpcName =
     action === "template" ? "has_template_quota" : "has_scan_quota";
+  const supabase = supabaseAsUser(accessToken);
+  const { data, error } = await supabase.rpc(rpcName);
+  if (error) throw error;
+  return !!data?.allowed;
+}
+
+// Gates document scans (/api/analyze) and template creation (/api/template)
+// against the caller's quota. This is a READ-ONLY peek that runs BEFORE the
+// Claude API call, so an over-limit request never reaches (and never pays
+// for) Claude — but it does NOT consume anything yet. The actual consumption
+// happens via consumeQuota() AFTER a successful Claude call, so a failed
+// analysis doesn't burn a scan/credit.
+//
+// NOTE: /api/qr does NOT use this middleware — it gates inside the route so
+// that a deterministic GiroCode (no Claude call) is fully quota-free.
+function checkQuota(action) {
   return async function (req, res, next) {
     try {
-      const supabase = supabaseAsUser(req.accessToken);
-      const { data, error } = await supabase.rpc(rpcName);
-      if (error) return next(error);
-      if (!data?.allowed) {
+      if (!(await hasQuota(action, req.accessToken))) {
         return res.status(402).json({ error: "quota_exceeded" });
       }
       next();
@@ -83,4 +94,4 @@ function requireTier(tier) {
   };
 }
 
-module.exports = { checkQuota, consumeQuota, requireTier, supabaseAsUser };
+module.exports = { checkQuota, hasQuota, consumeQuota, requireTier, supabaseAsUser };

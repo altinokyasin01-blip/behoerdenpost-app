@@ -1,7 +1,7 @@
 const express = require("express");
 const { analyzeQrContent } = require("../services/claude");
 const { parseGiroCode } = require("../services/giroCode");
-const { consumeQuota } = require("../middleware/quota");
+const { hasQuota, consumeQuota } = require("../middleware/quota");
 
 const router = express.Router();
 
@@ -76,17 +76,24 @@ router.post("/", async (req, res, next) => {
     }
     const trimmed = content.trim();
 
-    let result;
+    // GiroCode/BCD-QR wird deterministisch geparst — kein Claude-Call, keine
+    // API-Kosten. Deshalb komplett quota-frei: weder Peek noch Verbrauch.
     if (trimmed.startsWith("BCD")) {
       const giro = parseGiroCode(trimmed);
-      result = giro ? buildGiroCodeResult(trimmed, giro) : await analyzeQrContent(trimmed);
-    } else {
-      result = await analyzeQrContent(trimmed);
+      if (giro) {
+        const result = buildGiroCodeResult(trimmed, giro);
+        return res.json({ ...result, qrCodes: [trimmed] });
+      }
+      // BCD-Header, aber nicht parsebar -> fällt unten auf den Claude-Pfad.
     }
 
-    // Quota erst nach erfolgreicher Verarbeitung verbuchen.
-    // (Hinweis Backlog: der deterministische GiroCode-Pfad ruft Claude nicht
-    // auf und sollte künftig keine Quota kosten -- separater Nachzieher.)
+    // Nicht-GiroCode (oder unparsebarer BCD): braucht Claude -> Quota gaten.
+    // Peek VOR dem Claude-Call (blockt Over-Limit, kein Kostenrisiko),
+    // echter Verbrauch erst NACH erfolgreichem Call.
+    if (!(await hasQuota("scan", req.accessToken))) {
+      return res.status(402).json({ error: "quota_exceeded" });
+    }
+    const result = await analyzeQrContent(trimmed);
     await consumeQuota("scan", req.accessToken);
 
     res.json({ ...result, qrCodes: [trimmed] });
