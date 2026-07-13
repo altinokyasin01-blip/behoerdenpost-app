@@ -201,6 +201,14 @@ export default function App() {
     setBrowserTipSeen(true);
   }
 
+  const [billingStatus, setBillingStatus] = useState(null);
+  // Query-Param aus dem Stripe-Checkout-Redirect wird nur beim allerersten
+  // Render gelesen -- die URL wird gleich danach bereinigt (siehe Effekt
+  // unten), ein erneuter Read nach dem Cleanup soll nichts mehr finden.
+  const [billingRedirect] = useState(() =>
+    new URLSearchParams(window.location.search).get("billing")
+  );
+
   // Coming-soon-Modus deckt alle Google-Funktionen ab: Modals, Kalender-
   // Overlay und Auto-Export hängen sämtlich an googleConnected. Ein evtl.
   // vorhandenes Token bleibt in localStorage erhalten.
@@ -444,6 +452,32 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, googleToken, googleShowCalendar]);
 
+  // URL sofort bereinigen, unabhängig vom Auth-Zustand -- verhindert, dass
+  // ein Reload denselben Redirect (und damit den Erfolgs-Toast) erneut
+  // auslöst.
+  useEffect(() => {
+    if (!billingRedirect) return;
+    const url = new URL(window.location.href);
+    url.searchParams.delete("billing");
+    window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+  }, [billingRedirect]);
+
+  useEffect(() => {
+    if (!dataReady) return;
+    refreshBillingStatus();
+    // Einmaliges Laden, sobald Nutzerdaten bereitstehen -- Trial-Banner und
+    // Settings-Shop lesen billingStatus danach direkt aus dem State.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dataReady]);
+
+  useEffect(() => {
+    if (billingRedirect !== "success" || !dataReady) return;
+    // Datenabruf selbst übernimmt der allgemeine Lade-Effekt oben (feuert
+    // im selben Render-Zyklus bei dataReady) -- hier nur Navigation + Toast.
+    setTab("settings");
+    setSuccessToast("Zahlung erfolgreich — dein Tarif wurde aktualisiert.");
+  }, [billingRedirect, dataReady]);
+
   useEffect(() => {
     function onPrompt(e) {
       e.preventDefault();
@@ -671,6 +705,24 @@ export default function App() {
       } else {
         console.error("Failed to load Google events:", e);
       }
+    }
+  }
+
+  async function refreshBillingStatus() {
+    if (!session?.access_token) return;
+    try {
+      const res = await authFetch(
+        `${API_BASE}/api/billing/status`,
+        {},
+        session.access_token
+      );
+      if (!res.ok) return;
+      setBillingStatus(await res.json());
+    } catch (e) {
+      // Tarif-Status ist ergänzende UI, kein Blocker für die Kernfunktionen
+      // der App -- ein fehlgeschlagener Ladeversuch darf nichts anderes
+      // stören, nur geloggt werden.
+      console.error("Failed to load billing status:", e);
     }
   }
 

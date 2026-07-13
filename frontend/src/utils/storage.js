@@ -42,6 +42,7 @@ export const USER_NAME_KEY = "buero_user_name";
 export const TIPS_SEEN_KEY = "buero_tips_seen";
 export const INSTALL_DISMISSED_KEY = "buero_install_dismissed";
 export const BROWSER_TIP_SEEN_KEY = "buero_browser_tip_seen";
+export const TARIF_INTRO_SEEN_KEY = "buero_tarif_intro_seen";
 
 export const BROWSER_TIP_TEXT =
   "Einige Funktionen wie der lokale Datei-Zugriff sind nur in Chrome und Edge verfügbar. Alle anderen Funktionen laufen in jedem Browser.";
