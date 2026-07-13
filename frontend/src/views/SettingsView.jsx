@@ -7,6 +7,9 @@ import { APP_VERSION, SUPPORT_EMAIL } from "../utils/legal.jsx";
 import { GOOGLE_CONFIGURED, GOOGLE_COMING_SOON } from "../utils/google.js";
 import { FS_SUPPORTED, FILE_INDEX_MAX_FILES } from "../utils/fileIndex.js";
 
+const TIER_LABEL = { trial: "Trial", smart: "Smart", basic: "Basic" };
+const TIER_BADGE_CLASS = { trial: "badge-amber", smart: "badge-green", basic: "badge-gray" };
+
 export default function SettingsView({
   folders,
   folderStatus,
@@ -31,6 +34,8 @@ export default function SettingsView({
   onSetGoogleAutoExport,
   onSetGoogleShowCalendar,
   onExportCalendar,
+  billingStatus,
+  onStartCheckout,
 }) {
   const [emailEditing, setEmailEditing] = useState(false);
   const [emailDraft, setEmailDraft] = useState(userEmail || "");
@@ -543,24 +548,82 @@ export default function SettingsView({
       <section className="settings-section">
         <h2 className="settings-section-title">Abo</h2>
         <div className="settings-group">
-          <div className="settings-row">
-            <div className="settings-row-body">
-              <div className="settings-row-label">Aktueller Plan</div>
-              <div className="settings-row-sub">
-                Voller Funktionsumfang, kostenlos.
+          {!billingStatus ? (
+            <div className="settings-row">
+              <div className="settings-row-body">
+                <div className="settings-row-label">Lädt…</div>
               </div>
             </div>
-            <span className="badge badge-green">Büro Free</span>
-          </div>
-          <div className="settings-row settings-row-muted">
-            <div className="settings-row-body">
-              <div className="settings-row-label">Pro Plan</div>
-              <div className="settings-row-sub">
-                Cloud-Sync, geteilte Ordner, Priority-Support — kommt bald.
+          ) : (
+            <>
+              <div className="settings-row">
+                <div className="settings-row-body">
+                  <div className="settings-row-label">Aktueller Tarif</div>
+                  <div className="settings-row-sub">
+                    {billingStatus.tier === "trial" &&
+                      `Voller Smart-Funktionsumfang — noch ${billingStatus.trialDaysRemaining} Tag${billingStatus.trialDaysRemaining === 1 ? "" : "e"}.`}
+                    {billingStatus.tier === "smart" &&
+                      "Unlimitierte Scans, Vorlagen-Erstellung und Widerspruch-Analyse."}
+                    {billingStatus.tier === "basic" &&
+                      `${billingStatus.scansRemaining} von 10 Gratis-Scans übrig diesen Monat.`}
+                  </div>
+                </div>
+                <span className={`badge ${TIER_BADGE_CLASS[billingStatus.tier]}`}>
+                  {TIER_LABEL[billingStatus.tier]}
+                </span>
               </div>
-            </div>
-            <span className="badge badge-gray">Coming soon</span>
-          </div>
+
+              {billingStatus.credits > 0 && (
+                <div className="settings-row">
+                  <div className="settings-row-body">
+                    <div className="settings-row-label">Credits</div>
+                    <div className="settings-row-sub">
+                      Für Scans und Vorlagen nutzbar, sobald das Gratis-Kontingent
+                      aufgebraucht ist.
+                    </div>
+                  </div>
+                  <span className="badge badge-neutral">{billingStatus.credits}</span>
+                </div>
+              )}
+
+              {billingStatus.tier === "basic" && (
+                <div className="settings-row">
+                  <div className="settings-row-body">
+                    <div className="settings-row-label">Auf Smart upgraden</div>
+                    <div className="settings-row-sub">
+                      Unlimitierte Scans, Vorlagen-Erstellung, Widerspruch-Analyse,
+                      File System Access, erweiterter Export — 3,90€/Monat.
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn-primary btn-primary-sm"
+                    onClick={() => onStartCheckout("subscription")}
+                  >
+                    Upgraden
+                  </button>
+                </div>
+              )}
+
+              {billingStatus.tier === "basic" && (
+                <div className="settings-row">
+                  <div className="settings-row-body">
+                    <div className="settings-row-label">Credits nachkaufen</div>
+                    <div className="settings-row-sub">
+                      15 zusätzliche Scans oder Vorlagen — 0,50€ einmalig.
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn-secondary btn-primary-sm"
+                    onClick={() => onStartCheckout("credits")}
+                  >
+                    Kaufen
+                  </button>
+                </div>
+              )}
+            </>
+          )}
         </div>
       </section>
 

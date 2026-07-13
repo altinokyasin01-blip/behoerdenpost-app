@@ -211,6 +211,10 @@ export default function App() {
     new URLSearchParams(window.location.search).get("billing")
   );
   const [tarifIntroOpen, setTarifIntroOpen] = useState(false);
+  // Bewusst kein localStorage-Flag: der Banner soll an jedem Login-Tag
+  // während des Trials (Tag 2/3) wieder erscheinen, nicht nur einmal für
+  // immer weggeklickt werden können wie die Tab-Tips.
+  const [trialBannerDismissed, setTrialBannerDismissed] = useState(false);
 
   // Coming-soon-Modus deckt alle Google-Funktionen ab: Modals, Kalender-
   // Overlay und Auto-Export hängen sämtlich an googleConnected. Ein evtl.
@@ -749,6 +753,31 @@ export default function App() {
       // der App -- ein fehlgeschlagener Ladeversuch darf nichts anderes
       // stören, nur geloggt werden.
       console.error("Failed to load billing status:", e);
+    }
+  }
+
+  async function startCheckout(type) {
+    if (!session?.access_token) return;
+    try {
+      const res = await authFetch(
+        `${API_BASE}/api/billing/checkout`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ type }),
+        },
+        session.access_token
+      );
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || `HTTP ${res.status}`);
+      }
+      const { url } = await res.json();
+      // Voller Redirect zu Stripes gehosteter Checkout-Seite -- kein
+      // eingebettetes Formular, keine Kartendaten in unserer App.
+      window.location.href = url;
+    } catch (e) {
+      alert("Checkout konnte nicht gestartet werden: " + e.message);
     }
   }
 
@@ -1693,6 +1722,14 @@ export default function App() {
         {!FS_SUPPORTED && !browserTipSeen && (
           <TabTip text={BROWSER_TIP_TEXT} onDismiss={dismissBrowserTip} />
         )}
+        {billingStatus?.tier === "trial" &&
+          billingStatus.trialDaysRemaining <= 2 &&
+          !trialBannerDismissed && (
+            <TabTip
+              text={`Noch ${billingStatus.trialDaysRemaining} Tag${billingStatus.trialDaysRemaining === 1 ? "" : "e"} Smart im Trial — danach geht's mit Basic (10 Gratis-Scans/Monat) weiter, oder du bleibst für 3,90€/Monat bei Smart.`}
+              onDismiss={() => setTrialBannerDismissed(true)}
+            />
+          )}
         {TAB_TIPS[tab] &&
           !tooltipsSeen.has(tab) &&
           !(tab === "scan" && !tooltipsSeen.has("first_scan_done")) && (
@@ -1807,6 +1844,8 @@ export default function App() {
             onSetGoogleAutoExport={setGoogleAutoExport}
             onSetGoogleShowCalendar={setGoogleShowCalendar}
             onExportCalendar={exportCalendarICS}
+            billingStatus={billingStatus}
+            onStartCheckout={startCheckout}
           />
         )}
       </main>
