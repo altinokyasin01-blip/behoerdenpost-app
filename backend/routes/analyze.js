@@ -1,6 +1,7 @@
 const express = require("express");
 const multer = require("multer");
 const { analyzeDocument } = require("../services/claude");
+const { consumeQuota } = require("../middleware/quota");
 
 const router = express.Router();
 
@@ -47,6 +48,9 @@ router.post("/", upload.single("document"), handleUploadErrors, async (req, res,
 
     const base64 = req.file.buffer.toString("base64");
     const result = await analyzeDocument(base64, req.file.mimetype);
+    // Quota erst nach erfolgreichem Claude-Call verbuchen -- ein Fehlschlag
+    // oben (throw) erreicht diese Zeile nicht, kostet also keine Quota.
+    await consumeQuota("scan", req.accessToken);
     res.json(result);
   } catch (err) {
     next(err);

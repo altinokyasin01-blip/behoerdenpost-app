@@ -1,6 +1,7 @@
 const express = require("express");
 const { analyzeQrContent } = require("../services/claude");
 const { parseGiroCode } = require("../services/giroCode");
+const { consumeQuota } = require("../middleware/quota");
 
 const router = express.Router();
 
@@ -82,6 +83,11 @@ router.post("/", async (req, res, next) => {
     } else {
       result = await analyzeQrContent(trimmed);
     }
+
+    // Quota erst nach erfolgreicher Verarbeitung verbuchen.
+    // (Hinweis Backlog: der deterministische GiroCode-Pfad ruft Claude nicht
+    // auf und sollte künftig keine Quota kosten -- separater Nachzieher.)
+    await consumeQuota("scan", req.accessToken);
 
     res.json({ ...result, qrCodes: [trimmed] });
   } catch (err) {

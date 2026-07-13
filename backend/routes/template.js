@@ -1,5 +1,6 @@
 const express = require("express");
 const { generateTemplate } = require("../services/claude");
+const { consumeQuota } = require("../middleware/quota");
 
 const router = express.Router();
 
@@ -87,6 +88,8 @@ router.post("/", async (req, res, next) => {
       recipient: cleanRecipient,
       linkedDoc: cleanLinkedDoc,
     });
+    // Quota erst nach erfolgreicher Vorlagen-Generierung verbuchen.
+    await consumeQuota("template", req.accessToken);
     res.json(result);
   } catch (err) {
     next(err);

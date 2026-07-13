@@ -12,28 +12,52 @@ function supabaseAsUser(accessToken) {
 }
 
 // Gates document scans (/api/analyze, /api/qr) and template creation
-// (/api/template) against the caller's quota — free monthly scans, then
-// purchased credits, unlimited for Smart/Trial. Runs BEFORE the Claude API
-// call so an over-limit request never reaches (and never pays for) Claude.
+// (/api/template) against the caller's quota. This is a READ-ONLY peek that
+// runs BEFORE the Claude API call, so an over-limit request never reaches
+// (and never pays for) Claude — but it does NOT consume anything yet. The
+// actual consumption happens via consumeQuota() AFTER a successful Claude
+// call, so a failed analysis doesn't burn a scan/credit.
 function checkQuota(action) {
   const rpcName =
-    action === "template" ? "consume_template_credit" : "consume_scan_credit";
+    action === "template" ? "has_template_quota" : "has_scan_quota";
   return async function (req, res, next) {
     try {
       const supabase = supabaseAsUser(req.accessToken);
       const { data, error } = await supabase.rpc(rpcName);
       if (error) return next(error);
       if (!data?.allowed) {
-        return res.status(402).json({
-          error: "quota_exceeded",
-          reason: data?.reason || "limit_reached",
-        });
+        return res.status(402).json({ error: "quota_exceeded" });
       }
       next();
     } catch (err) {
       next(err);
     }
   };
+}
+
+// Consumes one unit of quota (free scan, then credit) AFTER the work
+// succeeded. Called from the route handler once the Claude result is in
+// hand. Best-effort: a failure here must not fail the already-successful
+// request (the user got their result) — we log and move on. The peek in
+// checkQuota already guaranteed availability for the common sequential
+// case; a rare concurrent race could make this return allowed:false after
+// the fact, which we just log (minor over-grant, never an over-charge).
+async function consumeQuota(action, accessToken) {
+  const rpcName =
+    action === "template" ? "consume_template_credit" : "consume_scan_credit";
+  try {
+    const supabase = supabaseAsUser(accessToken);
+    const { data, error } = await supabase.rpc(rpcName);
+    if (error) {
+      console.error(`consumeQuota(${action}) RPC error:`, error.message);
+    } else if (!data?.allowed) {
+      console.warn(
+        `consumeQuota(${action}) returned allowed:false after successful work — reason: ${data?.reason}`
+      );
+    }
+  } catch (err) {
+    console.error(`consumeQuota(${action}) failed:`, err.message);
+  }
 }
 
 // Binary gate for Smart-only features (currently: Widerspruch-Analyse).
@@ -59,4 +83,4 @@ function requireTier(tier) {
   };
 }
 
-module.exports = { checkQuota, requireTier, supabaseAsUser };
+module.exports = { checkQuota, consumeQuota, requireTier, supabaseAsUser };

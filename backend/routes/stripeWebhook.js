@@ -9,7 +9,7 @@ const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANO
 const RPC_SECRET = process.env.STRIPE_WEBHOOK_RPC_SECRET;
 const CREDIT_PACK_AMOUNT = 15;
 
-async function handleCheckoutCompleted(session) {
+async function handleCheckoutCompleted(session, eventId) {
   const userId = session.client_reference_id;
   if (!userId) {
     console.error(
@@ -32,13 +32,19 @@ async function handleCheckoutCompleted(session) {
       console.error("apply_stripe_subscription_started traf keine Zeile — user_id:", userId);
     }
   } else if (session.mode === "payment") {
+    // p_event_id sorgt für Idempotenz: bei doppelter Stripe-Zustellung
+    // desselben Events werden die Credits NICHT ein zweites Mal gutgeschrieben
+    // (Dedup läuft atomar in der RPC).
     const { data, error } = await supabase.rpc("apply_stripe_credits_purchased", {
       p_webhook_secret: RPC_SECRET,
       p_user_id: userId,
       p_credits: CREDIT_PACK_AMOUNT,
+      p_event_id: eventId,
     });
     if (error) throw error;
-    if (!data?.updated) {
+    if (data?.duplicate) {
+      console.log("apply_stripe_credits_purchased: Duplikat ignoriert — event:", eventId);
+    } else if (!data?.updated) {
       console.error("apply_stripe_credits_purchased traf keine Zeile — user_id:", userId);
     }
   }
@@ -81,7 +87,7 @@ async function stripeWebhookHandler(req, res) {
   try {
     switch (event.type) {
       case "checkout.session.completed":
-        await handleCheckoutCompleted(event.data.object);
+        await handleCheckoutCompleted(event.data.object, event.id);
         break;
       case "customer.subscription.updated":
         await handleSubscriptionStatus(event.data.object, event.data.object.status);
