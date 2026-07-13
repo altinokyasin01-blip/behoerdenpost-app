@@ -408,16 +408,38 @@ export default function SettingsView({
               Sprachdaten (aus Browser-Cache danach schnell).
             </p>
 
-            <div className="settings-actions">
-              <button
-                type="button"
-                className="btn-primary"
-                onClick={onAddFolder}
-                disabled={indexing.active}
-              >
-                {indexing.active ? "Indiziere…" : "Ordner freigeben"}
-              </button>
-            </div>
+            {billingStatus?.tier === "basic" ? (
+              // Soft-Gate: bewusst nur client-seitig, technisch für versierte
+              // Nutzer umgehbar (die Indizierung selbst hat keinen Backend-
+              // Call, der ihn hart durchsetzen könnte) — akzeptiert für den
+              // aktuellen Maßstab. Trial/Smart bekommen den normalen Button.
+              <div className="card empty-card">
+                <div className="empty-title">Smart-Feature</div>
+                <div className="empty-sub">
+                  Lokale Datei-Freigabe ist Teil von Smart. Mit Smart
+                  durchsuchst du auch deine lokalen Ordner über die
+                  Schnellsuche.
+                </div>
+                <button
+                  type="button"
+                  className="btn-primary btn-primary-sm"
+                  onClick={() => onStartCheckout("subscription")}
+                >
+                  Auf Smart upgraden
+                </button>
+              </div>
+            ) : (
+              <div className="settings-actions">
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={onAddFolder}
+                  disabled={indexing.active}
+                >
+                  {indexing.active ? "Indiziere…" : "Ordner freigeben"}
+                </button>
+              </div>
+            )}
 
             {indexing.active && (
               <div className="index-progress">
