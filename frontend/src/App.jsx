@@ -469,7 +469,14 @@ export default function App() {
   }, [onboardingDone]);
 
   useEffect(() => {
-    if (!onboardingDone) return;
+    // Erst prüfen, sobald der echte Server-Tarif geladen ist -- und NUR
+    // zeigen, wenn wirklich tier === "trial" gilt. Vorher hing das Popup rein
+    // an einem localStorage-Flag und zeigte bei jedem Verlust dieses Flags
+    // (privater Modus, Browser räumt Storage auf, neue Installation) einen
+    // hartcodierten "3 Tage"-Text, auch wenn der Trial längst vorbei war und
+    // der Account bereits auf Basic/Smart lief.
+    if (!onboardingDone || !billingStatus) return;
+    if (billingStatus.tier !== "trial") return;
     let seen = false;
     try {
       seen = !!localStorage.getItem(TARIF_INTRO_SEEN_KEY);
@@ -477,10 +484,7 @@ export default function App() {
       // ignore
     }
     if (!seen) setTarifIntroOpen(true);
-    // Gleiches Muster wie oben: nur beim Übergang zu onboardingDone prüfen,
-    // nicht bei jedem Re-Render.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [onboardingDone]);
+  }, [onboardingDone, billingStatus]);
 
   function closeTarifIntro() {
     try {
@@ -2130,7 +2134,12 @@ export default function App() {
         />
       )}
 
-      {tarifIntroOpen && <TarifOnboardingModal onClose={closeTarifIntro} />}
+      {tarifIntroOpen && (
+        <TarifOnboardingModal
+          onClose={closeTarifIntro}
+          daysRemaining={billingStatus?.trialDaysRemaining}
+        />
+      )}
 
       {upsellAction && (
         <UpsellModal
