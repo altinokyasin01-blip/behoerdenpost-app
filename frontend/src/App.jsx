@@ -513,6 +513,21 @@ export default function App() {
   }, [dataReady]);
 
   useEffect(() => {
+    // Der Trial-Banner (trialDaysRemaining) hängt an der Wanduhr, nicht an
+    // einer User-Aktion -- ohne diesen Effekt bliebe er tagelang auf dem
+    // Stand des letzten Ladens, wenn die App/der Tab im Hintergrund offen
+    // bleibt. Bei Rückkehr aus dem Hintergrund (Tab-Wechsel, PWA
+    // reaktiviert) frisch nachladen, zusätzlich zum Settings-Öffnen-Refresh.
+    if (!dataReady) return;
+    function onVisible() {
+      if (document.visibilityState === "visible") refreshBillingStatus();
+    }
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dataReady]);
+
+  useEffect(() => {
     if (billingRedirect !== "success" || !dataReady) return;
     // Datenabruf selbst übernimmt der allgemeine Lade-Effekt oben (feuert
     // im selben Render-Zyklus bei dataReady) -- hier nur Navigation + Toast.
@@ -1823,6 +1838,7 @@ export default function App() {
             savedTemplates={savedTemplates}
             onUseSavedTemplate={useSavedTemplate}
             onDeleteSavedTemplate={deleteSavedTemplate}
+            billingStatus={billingStatus}
           />
         )}
         {tab === "categories" && (
@@ -2060,6 +2076,7 @@ export default function App() {
           defaultSenderName={userName}
           onSubmit={submitTemplateRequest}
           onCancel={() => setTemplateFormType(null)}
+          billingStatus={billingStatus}
         />
       )}
 

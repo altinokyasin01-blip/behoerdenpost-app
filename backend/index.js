@@ -20,8 +20,29 @@ const PORT = process.env.PORT || 3001;
 // the IP-based rate limiter below bucket all traffic together.
 app.set("trust proxy", 1);
 
+// FRONTEND_URL ist bereits für die Stripe-Checkout-Redirects gesetzt (siehe
+// routes/billing.js) -- wiederverwendet statt eines neuen Env-Vars.
+// Komma-getrennt für den Fall mehrerer legitimer Origins (z.B. eigene
+// Domain zusätzlich zu Vercel, sobald die DNS-Lage dort geklärt ist).
+// Trailing Slash abschneiden -- ein Origin-Header hat nie einen, ein per Hand
+// gepflegter Env-Var potenziell schon; ohne Normalisierung würde ein
+// abweichender Env-Wert die komplette Produktions-App stillschweigend
+// aussperren statt nur die Absicherung zu verschärfen.
+const allowedOrigins = (process.env.FRONTEND_URL || "")
+  .split(",")
+  .map((s) => s.trim().replace(/\/$/, ""))
+  .filter(Boolean);
+
 app.use(cors({
-  origin: '*'
+  origin(origin, callback) {
+    // Kein Origin-Header (z.B. curl, Server-zu-Server, der separat
+    // gemountete Stripe-Webhook) -- durchlassen, hier geht es nur um
+    // Browser-CORS, nicht um Auth (die läuft weiterhin über requireAuth).
+    if (!origin || allowedOrigins.includes(origin.replace(/\/$/, ""))) {
+      return callback(null, true);
+    }
+    callback(new Error("Not allowed by CORS"));
+  },
 }));
 
 // MUSS vor express.json() registriert werden: Stripes constructEvent()

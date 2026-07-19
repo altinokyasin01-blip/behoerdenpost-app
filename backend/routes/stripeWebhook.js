@@ -9,6 +9,22 @@ const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANO
 const RPC_SECRET = process.env.STRIPE_WEBHOOK_RPC_SECRET;
 const CREDIT_PACK_AMOUNT = 15;
 
+// Best-effort: eine fehlgeschlagene Log-Schreibung darf die Webhook-Antwort
+// an Stripe nicht kippen -- nur zusätzlich zu console.error, nie statt dessen.
+async function logWebhookFailure(eventId, eventType, detail) {
+  try {
+    const { error } = await supabase.rpc("log_webhook_failure", {
+      p_webhook_secret: RPC_SECRET,
+      p_event_id: eventId || null,
+      p_event_type: eventType,
+      p_detail: detail,
+    });
+    if (error) console.error("log_webhook_failure RPC error:", error.message);
+  } catch (err) {
+    console.error("log_webhook_failure failed:", err.message);
+  }
+}
+
 async function handleCheckoutCompleted(session, eventId) {
   const userId = session.client_reference_id;
   if (!userId) {
@@ -30,6 +46,11 @@ async function handleCheckoutCompleted(session, eventId) {
     if (error) throw error;
     if (!data?.updated) {
       console.error("apply_stripe_subscription_started traf keine Zeile — user_id:", userId);
+      await logWebhookFailure(
+        eventId,
+        "checkout.session.completed(subscription)",
+        `apply_stripe_subscription_started traf keine Zeile — user_id: ${userId}`
+      );
     }
   } else if (session.mode === "payment") {
     // p_event_id sorgt für Idempotenz: bei doppelter Stripe-Zustellung
@@ -46,11 +67,16 @@ async function handleCheckoutCompleted(session, eventId) {
       console.log("apply_stripe_credits_purchased: Duplikat ignoriert — event:", eventId);
     } else if (!data?.updated) {
       console.error("apply_stripe_credits_purchased traf keine Zeile — user_id:", userId);
+      await logWebhookFailure(
+        eventId,
+        "checkout.session.completed(payment)",
+        `apply_stripe_credits_purchased traf keine Zeile — user_id: ${userId}`
+      );
     }
   }
 }
 
-async function handleSubscriptionStatus(subscription, status) {
+async function handleSubscriptionStatus(subscription, status, eventId) {
   const { data, error } = await supabase.rpc("apply_stripe_subscription_status", {
     p_webhook_secret: RPC_SECRET,
     p_stripe_subscription_id: subscription.id,
@@ -61,6 +87,11 @@ async function handleSubscriptionStatus(subscription, status) {
     console.error(
       "apply_stripe_subscription_status traf keine Zeile — subscription_id:",
       subscription.id
+    );
+    await logWebhookFailure(
+      eventId,
+      `customer.subscription.* (${status})`,
+      `apply_stripe_subscription_status traf keine Zeile — subscription_id: ${subscription.id}`
     );
   }
 }
@@ -90,10 +121,10 @@ async function stripeWebhookHandler(req, res) {
         await handleCheckoutCompleted(event.data.object, event.id);
         break;
       case "customer.subscription.updated":
-        await handleSubscriptionStatus(event.data.object, event.data.object.status);
+        await handleSubscriptionStatus(event.data.object, event.data.object.status, event.id);
         break;
       case "customer.subscription.deleted":
-        await handleSubscriptionStatus(event.data.object, "canceled");
+        await handleSubscriptionStatus(event.data.object, "canceled", event.id);
         break;
       default:
         // Andere Event-Typen bewusst ignoriert.

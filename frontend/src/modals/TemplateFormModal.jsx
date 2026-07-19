@@ -9,6 +9,7 @@ export default function TemplateFormModal({
   defaultSenderName,
   onSubmit,
   onCancel,
+  billingStatus,
 }) {
   const tpl = TEMPLATE_TYPES.find((t) => t.id === templateType);
   const [form, setForm] = useState({
@@ -57,6 +58,13 @@ export default function TemplateFormModal({
         <div className="detail-head">
           <div className="detail-title">{tpl?.label || "Vorlage"}</div>
           <div className="detail-sender">{tpl?.desc}</div>
+          {billingStatus?.tier === "basic" && (
+            <p className="detail-muted">
+              {billingStatus.credits > 0
+                ? `Vorlagen sind bei Basic nicht gratis — noch ${billingStatus.credits} Credits übrig.`
+                : "Vorlagen sind bei Basic nicht im Gratis-Kontingent enthalten."}
+            </p>
+          )}
         </div>
 
         <div className="form-field">

@@ -22,6 +22,7 @@ export default function ScanView({
   savedTemplates,
   onUseSavedTemplate,
   onDeleteSavedTemplate,
+  billingStatus,
 }) {
   const [dragging, setDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -137,6 +138,15 @@ export default function ScanView({
       <header className="view-header">
         <h1>Scannen</h1>
         <p className="lead">Dokument hochladen oder mit Kamera aufnehmen.</p>
+        {billingStatus?.tier === "basic" && (
+          <p className="detail-muted">
+            {billingStatus.scansRemaining > 0
+              ? `${billingStatus.scansRemaining} von 10 Gratis-Scans übrig diesen Monat.`
+              : billingStatus.credits > 0
+                ? `Gratis-Kontingent aufgebraucht — noch ${billingStatus.credits} Credits übrig.`
+                : "Gratis-Kontingent aufgebraucht, keine Credits mehr."}
+          </p>
+        )}
       </header>
 
       {isFirstScan && (
