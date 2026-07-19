@@ -3,8 +3,8 @@ export const SUPPORT_EMAIL = "support@buero.app";
 // Eigenständige Versionierung für die Datenschutzerklärung — unabhängig von
 // APP_VERSION (Software-Release), da Rechtstexte nach eigenem Anlass
 // (z.B. neue Server-Standorte) revisioniert werden, nicht nach App-Releases.
-const PRIVACY_VERSION = "0.3.0";
-const PRIVACY_DATE = "12.07.2026";
+const PRIVACY_VERSION = "0.4.0";
+const PRIVACY_DATE = "19.07.2026";
 
 export const LEGAL_TEXTS = {
   impressum: {
@@ -32,6 +32,15 @@ export const LEGAL_TEXTS = {
           <strong>Verantwortlich für den Inhalt nach § 55 Abs. 2 RStV</strong>
           <br />
           Yasin Altinok
+        </p>
+        <p>
+          <strong>Online-Streitbeilegung</strong>
+          <br />
+          Die Europäische Kommission stellt eine Plattform zur
+          Online-Streitbeilegung (OS) bereit, die Sie unter
+          https://ec.europa.eu/consumers/odr/ finden. Zur Teilnahme an einem
+          Streitbeilegungsverfahren vor einer Verbraucherschlichtungsstelle
+          sind wir nicht verpflichtet und nicht bereit.
         </p>
       </>
     ),
@@ -87,6 +96,20 @@ export const LEGAL_TEXTS = {
           Authentifizierung (JWT über Supabase) geschützt — nur du kannst
           mit deinem eigenen Konto Analysen auslösen. Mit Railway besteht
           ein Auftragsverarbeitungsvertrag (AVV) gemäß Art. 28 DSGVO.
+        </p>
+        <p>
+          <strong>Zahlungsabwicklung (Stripe)</strong>
+          <br />
+          Für die Abwicklung kostenpflichtiger Leistungen (Abonnements,
+          Credit-Käufe) nutzen wir den Zahlungsdienstleister Stripe Payments
+          Europe, Ltd., 1 Grand Canal Street Lower, Grand Canal Dock, Dublin,
+          Irland. Im Rahmen der Zahlungsabwicklung übermitteln wir an Stripe
+          die zur Vertragserfüllung erforderlichen Daten, insbesondere Name,
+          E-Mail-Adresse und Zahlungsinformationen. Die Verarbeitung erfolgt
+          auf Grundlage von Art. 6 Abs. 1 lit. b DSGVO (Vertragserfüllung).
+          Mit Stripe besteht ein Auftragsverarbeitungsvertrag gemäß Art. 28
+          DSGVO. Weitere Informationen zum Datenschutz bei Stripe finden Sie
+          unter: https://stripe.com/de/privacy
         </p>
         <p>
           <strong>Was an externe Dienste außerhalb der EU geht</strong>
@@ -195,12 +218,14 @@ export const LEGAL_TEXTS = {
         <p>
           <strong>5. Externe Dienste</strong>
           <br />
-          Büro nutzt aktuell die Anthropic Claude API (für KI-Analysen) und
-          optional die Google Calendar API (für Kalender-Synchronisation).
-          Weitere Verknüpfungen — z.B. Apple Kalender, Outlook oder andere
-          Cloud-Dienste — können in zukünftigen Versionen ergänzt werden.
-          Ihre Nutzung ist jeweils optional und wird an der betreffenden
-          Stelle in der App explizit als solche gekennzeichnet.
+          Büro nutzt aktuell die Anthropic Claude API (für KI-Analysen), für
+          kostenpflichtige Funktionen (Smart-Abo, Credits) den
+          Zahlungsdienstleister Stripe sowie optional die Google Calendar API
+          (für Kalender-Synchronisation). Weitere Verknüpfungen — z.B. Apple
+          Kalender, Outlook oder andere Cloud-Dienste — können in zukünftigen
+          Versionen ergänzt werden. Ihre Nutzung ist jeweils optional und
+          wird an der betreffenden Stelle in der App explizit als solche
+          gekennzeichnet.
         </p>
         <p>
           <strong>6. Datenschutz</strong>
@@ -208,12 +233,105 @@ export const LEGAL_TEXTS = {
           Siehe Datenschutzerklärung.
         </p>
         <p>
-          <strong>7. Änderungen</strong>
+          <strong>7. Widerrufsrecht</strong>
+          <br />
+          Für kostenpflichtige Leistungen (Smart-Abo, Credit-Käufe) gilt das
+          gesetzliche Widerrufsrecht für Verbraucher. Die vollständige
+          Widerrufsbelehrung mit Muster-Widerrufsformular findest du unter
+          „Widerrufsrecht" in den Einstellungen. Beim Kauf holen wir deine
+          ausdrückliche Zustimmung zum vorzeitigen Beginn der Leistung
+          separat per Checkbox ein.
+        </p>
+        <p>
+          <strong>8. Änderungen</strong>
           <br />
           Diese Bedingungen können sich ändern. Aktuelle Fassung immer in der
           App einsehbar.
         </p>
         <p className="detail-muted">Stand: Version {APP_VERSION}</p>
+      </>
+    ),
+  },
+  widerruf: {
+    title: "Widerrufsrecht",
+    body: (
+      <>
+        <p>
+          Diese Belehrung gilt für den Kauf kostenpflichtiger Leistungen in
+          Büro (Smart-Abo, Credit-Käufe).
+        </p>
+        <p>
+          <strong>Widerrufsrecht</strong>
+          <br />
+          Sie haben das Recht, binnen vierzehn Tagen ohne Angabe von Gründen
+          diesen Vertrag zu widerrufen. Die Widerrufsfrist beträgt vierzehn
+          Tage ab dem Tag des Vertragsabschlusses.
+        </p>
+        <p>
+          Um Ihr Widerrufsrecht auszuüben, müssen Sie uns (Yasin Altinok,
+          Stolberger Straße 209, 52068 Aachen, E-Mail: kontakt@meinbuero.app)
+          mittels einer eindeutigen Erklärung (z.B. ein mit der Post
+          versandter Brief oder E-Mail) über Ihren Entschluss, diesen Vertrag
+          zu widerrufen, informieren. Sie können dafür das unten stehende
+          Muster-Widerrufsformular verwenden, das jedoch nicht vorgeschrieben
+          ist.
+        </p>
+        <p>
+          Zur Wahrung der Widerrufsfrist reicht es aus, dass Sie die
+          Mitteilung über die Ausübung des Widerrufsrechts vor Ablauf der
+          Widerrufsfrist absenden.
+        </p>
+        <p>
+          <strong>Folgen des Widerrufs</strong>
+          <br />
+          Wenn Sie diesen Vertrag widerrufen, haben wir Ihnen alle Zahlungen,
+          die wir von Ihnen erhalten haben, unverzüglich und spätestens
+          binnen vierzehn Tagen ab dem Tag zurückzuzahlen, an dem die
+          Mitteilung über Ihren Widerruf bei uns eingegangen ist. Für diese
+          Rückzahlung verwenden wir dasselbe Zahlungsmittel, das Sie bei der
+          ursprünglichen Transaktion eingesetzt haben. Haben Sie verlangt,
+          dass die Leistung während der Widerrufsfrist beginnen soll, so
+          haben Sie uns einen angemessenen Betrag zu zahlen, der dem Anteil
+          der bis zu dem Zeitpunkt Ihrer Widerrufsmitteilung bereits
+          erbrachten Leistung im Vergleich zum Gesamtumfang der vertraglich
+          vereinbarten Leistung entspricht.
+        </p>
+        <p>
+          <strong>Vorzeitiges Erlöschen des Widerrufsrechts</strong>
+          <br />
+          Ihr Widerrufsrecht erlischt vorzeitig, wenn wir die Leistung
+          vollständig erbracht bzw. mit der Bereitstellung der digitalen
+          Inhalte begonnen haben, nachdem Sie ausdrücklich zugestimmt haben,
+          dass wir vor Ablauf der Widerrufsfrist mit der Ausführung des
+          Vertrags beginnen, und Sie bestätigt haben, dass Sie wissen, dass
+          Sie durch diese Zustimmung Ihr Widerrufsrecht verlieren. Diese
+          Zustimmung holen wir beim Kauf ausdrücklich per Checkbox ein, bevor
+          Sie zur Zahlung weitergeleitet werden.
+        </p>
+        <p>
+          <strong>Muster-Widerrufsformular</strong>
+          <br />
+          (Wenn Sie den Vertrag widerrufen wollen, füllen Sie bitte dieses
+          Formular aus und senden Sie es an kontakt@meinbuero.app.)
+        </p>
+        <p>
+          An Yasin Altinok, Stolberger Straße 209, 52068 Aachen:
+          <br />
+          — Hiermit widerrufe(n) ich/wir den von mir/uns abgeschlossenen
+          Vertrag über die Erbringung der folgenden Leistung: Smart-Abo /
+          Credit-Kauf (Zutreffendes bitte angeben)
+          <br />
+          — Bestellt am:
+          <br />
+          — Name des/der Verbraucher(s):
+          <br />
+          — Anschrift des/der Verbraucher(s):
+          <br />
+          — Datum:
+        </p>
+        <p className="detail-muted">
+          Stand: {PRIVACY_DATE} — Version {PRIVACY_VERSION}
+        </p>
       </>
     ),
   },

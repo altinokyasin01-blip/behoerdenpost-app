@@ -683,6 +683,16 @@ export default function SettingsView({
             </div>
             <IconChevron />
           </button>
+          <button
+            type="button"
+            className="settings-row settings-row-link"
+            onClick={() => setLegalOpen("widerruf")}
+          >
+            <div className="settings-row-body">
+              <div className="settings-row-label">Widerrufsrecht</div>
+            </div>
+            <IconChevron />
+          </button>
         </div>
       </section>
 

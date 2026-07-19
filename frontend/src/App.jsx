@@ -102,6 +102,7 @@ import TemplateFormModal from "./modals/TemplateFormModal.jsx";
 import TemplateResultModal from "./modals/TemplateResultModal.jsx";
 import DisclaimerModal from "./modals/DisclaimerModal.jsx";
 import TarifOnboardingModal from "./modals/TarifOnboardingModal.jsx";
+import CheckoutConsentModal from "./modals/CheckoutConsentModal.jsx";
 import UpsellModal from "./modals/UpsellModal.jsx";
 import AuthConfigMissingScreen from "./modals/AuthConfigMissingScreen.jsx";
 import MigrationPromptModal from "./modals/MigrationPromptModal.jsx";
@@ -204,6 +205,7 @@ export default function App() {
   }
 
   const [billingStatus, setBillingStatus] = useState(null);
+  const [checkoutConsentType, setCheckoutConsentType] = useState(null);
   // Query-Param aus dem Stripe-Checkout-Redirect wird nur beim allerersten
   // Render gelesen -- die URL wird gleich danach bereinigt (siehe Effekt
   // unten), ein erneuter Read nach dem Cleanup soll nichts mehr finden.
@@ -776,7 +778,16 @@ export default function App() {
     }
   }
 
-  async function startCheckout(type) {
+  // Öffnet nur die Zustimmungs-Abfrage (Widerrufsrecht-Checkbox) -- der
+  // eigentliche Checkout-Call läuft erst nach Bestätigung, siehe
+  // performCheckout unten. onStartCheckout in SettingsView zeigt hierher,
+  // nicht direkt auf performCheckout.
+  function requestCheckout(type) {
+    setCheckoutConsentType(type);
+  }
+
+  async function performCheckout(type) {
+    setCheckoutConsentType(null);
     if (!session?.access_token) return;
     try {
       const res = await authFetch(
@@ -1873,7 +1884,7 @@ export default function App() {
             onSetGoogleShowCalendar={setGoogleShowCalendar}
             onExportCalendar={exportCalendarICS}
             billingStatus={billingStatus}
-            onStartCheckout={startCheckout}
+            onStartCheckout={requestCheckout}
           />
         )}
       </main>
@@ -2129,6 +2140,14 @@ export default function App() {
         <TarifOnboardingModal
           onClose={closeTarifIntro}
           daysRemaining={billingStatus?.trialDaysRemaining}
+        />
+      )}
+
+      {checkoutConsentType && (
+        <CheckoutConsentModal
+          type={checkoutConsentType}
+          onConfirm={() => performCheckout(checkoutConsentType)}
+          onClose={() => setCheckoutConsentType(null)}
         />
       )}
 
