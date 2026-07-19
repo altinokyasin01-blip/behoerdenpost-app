@@ -25,7 +25,6 @@ import {
   TIPS_SEEN_KEY,
   INSTALL_DISMISSED_KEY,
   BROWSER_TIP_SEEN_KEY,
-  TARIF_INTRO_SEEN_KEY,
   BROWSER_TIP_TEXT,
   loadBoolPref,
   loadContacts,
@@ -212,6 +211,8 @@ export default function App() {
     new URLSearchParams(window.location.search).get("billing")
   );
   const [tarifIntroOpen, setTarifIntroOpen] = useState(false);
+  // Session-lokal, bewusst nicht persistiert -- siehe Trigger-Effekt unten.
+  const [tarifIntroDismissed, setTarifIntroDismissed] = useState(false);
   // Bewusst kein localStorage-Flag: der Banner soll an jedem Login-Tag
   // während des Trials (Tag 2/3) wieder erscheinen, nicht nur einmal für
   // immer weggeklickt werden können wie die Tab-Tips.
@@ -469,29 +470,19 @@ export default function App() {
   }, [onboardingDone]);
 
   useEffect(() => {
-    // Erst prüfen, sobald der echte Server-Tarif geladen ist -- und NUR
-    // zeigen, wenn wirklich tier === "trial" gilt. Vorher hing das Popup rein
-    // an einem localStorage-Flag und zeigte bei jedem Verlust dieses Flags
-    // (privater Modus, Browser räumt Storage auf, neue Installation) einen
-    // hartcodierten "3 Tage"-Text, auch wenn der Trial längst vorbei war und
-    // der Account bereits auf Basic/Smart lief.
-    if (!onboardingDone || !billingStatus) return;
+    // Zeigt sich an jedem Login erneut, solange der Trial läuft (NUR wenn
+    // billingStatus.tier === "trial" -- Server-Wahrheit, kein Client-Flag).
+    // Bewusst kein localStorage-Persistieren: soll an jedem Login-Tag
+    // während des Trials wieder auftauchen (wegklickbar), nicht nur einmal
+    // für immer -- gleiches Muster wie trialBannerDismissed oben. Nach
+    // Trial-Ende (tier wechselt zu basic/smart) bleibt es endgültig weg.
+    if (!onboardingDone || !billingStatus || tarifIntroDismissed) return;
     if (billingStatus.tier !== "trial") return;
-    let seen = false;
-    try {
-      seen = !!localStorage.getItem(TARIF_INTRO_SEEN_KEY);
-    } catch {
-      // ignore
-    }
-    if (!seen) setTarifIntroOpen(true);
-  }, [onboardingDone, billingStatus]);
+    setTarifIntroOpen(true);
+  }, [onboardingDone, billingStatus, tarifIntroDismissed]);
 
   function closeTarifIntro() {
-    try {
-      localStorage.setItem(TARIF_INTRO_SEEN_KEY, "1");
-    } catch {
-      // ignore
-    }
+    setTarifIntroDismissed(true);
     setTarifIntroOpen(false);
   }
 
