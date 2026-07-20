@@ -208,6 +208,12 @@ export default function App() {
   }
 
   const [billingStatus, setBillingStatus] = useState(null);
+  // Unterscheidet "lädt noch" (billingStatus null, kein Fehler) von
+  // "Ladeversuch ist fehlgeschlagen" (billingStatus bleibt null, aber
+  // billingStatusError true) -- vorher zeigte SettingsView in beiden
+  // Fällen identisch dauerhaft "Lädt…", ohne Fehlermeldung oder
+  // Retry-Möglichkeit (z.B. wenn CORS eine unbekannte Origin blockt).
+  const [billingStatusError, setBillingStatusError] = useState(false);
   const [checkoutConsentType, setCheckoutConsentType] = useState(null);
   const [deleteAccountModalOpen, setDeleteAccountModalOpen] = useState(false);
   // Query-Param aus dem Stripe-Checkout-Redirect wird nur beim allerersten
@@ -793,13 +799,21 @@ export default function App() {
         {},
         session.access_token
       );
-      if (!res.ok) return;
+      if (!res.ok) {
+        setBillingStatusError(true);
+        return;
+      }
       setBillingStatus(await res.json());
+      setBillingStatusError(false);
     } catch (e) {
       // Tarif-Status ist ergänzende UI, kein Blocker für die Kernfunktionen
       // der App -- ein fehlgeschlagener Ladeversuch darf nichts anderes
-      // stören, nur geloggt werden.
+      // stören, nur geloggt werden. Der Fehlerzustand selbst wird aber
+      // sichtbar gemacht (billingStatusError), statt für immer bei "Lädt…"
+      // hängen zu bleiben, ohne dass der Nutzer es je erfährt oder erneut
+      // versuchen kann.
       console.error("Failed to load billing status:", e);
+      setBillingStatusError(true);
     }
   }
 
@@ -1993,6 +2007,8 @@ export default function App() {
             onSetGoogleShowCalendar={setGoogleShowCalendar}
             onExportCalendar={exportCalendarICS}
             billingStatus={billingStatus}
+            billingStatusError={billingStatusError}
+            onRetryBillingStatus={refreshBillingStatus}
             onStartCheckout={requestCheckout}
           />
         )}

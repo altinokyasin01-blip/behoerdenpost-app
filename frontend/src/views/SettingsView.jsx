@@ -36,6 +36,8 @@ export default function SettingsView({
   onSetGoogleShowCalendar,
   onExportCalendar,
   billingStatus,
+  billingStatusError,
+  onRetryBillingStatus,
   onStartCheckout,
 }) {
   const [emailEditing, setEmailEditing] = useState(false);
@@ -601,11 +603,30 @@ export default function SettingsView({
         <h2 className="settings-section-title">Abo</h2>
         <div className="settings-group">
           {!billingStatus ? (
-            <div className="settings-row">
-              <div className="settings-row-body">
-                <div className="settings-row-label">Lädt…</div>
+            billingStatusError ? (
+              <div className="settings-row">
+                <div className="settings-row-body">
+                  <div className="settings-row-label">Laden fehlgeschlagen</div>
+                  <div className="settings-row-sub">
+                    Tarif-Status konnte nicht geladen werden. Prüfe deine
+                    Internetverbindung.
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="btn-secondary btn-primary-sm"
+                  onClick={onRetryBillingStatus}
+                >
+                  Erneut versuchen
+                </button>
               </div>
-            </div>
+            ) : (
+              <div className="settings-row">
+                <div className="settings-row-body">
+                  <div className="settings-row-label">Lädt…</div>
+                </div>
+              </div>
+            )
           ) : (
             <>
               <div className="settings-row">

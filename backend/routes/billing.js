@@ -33,7 +33,11 @@ router.post("/checkout", async (req, res, next) => {
     if (!priceId) {
       return res.status(500).json({ error: `${config.priceEnvVar} is not set` });
     }
-    const frontendUrl = process.env.FRONTEND_URL;
+    // FRONTEND_URL ist komma-getrennt (index.js nutzt die volle Liste als
+    // CORS-Allowlist, z.B. Vercel-URL + eigene Domain) -- als Redirect-Ziel
+    // ergibt aber nur EINE URL Sinn. Konvention: die erste Adresse der
+    // Liste ist die kanonische, an die Stripe nach dem Checkout zurückleitet.
+    const frontendUrl = (process.env.FRONTEND_URL || "").split(",")[0].trim();
     if (!frontendUrl) {
       return res.status(500).json({ error: "FRONTEND_URL is not set" });
     }
