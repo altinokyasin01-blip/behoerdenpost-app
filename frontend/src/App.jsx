@@ -102,6 +102,7 @@ import TemplateFormModal from "./modals/TemplateFormModal.jsx";
 import TemplateResultModal from "./modals/TemplateResultModal.jsx";
 import DisclaimerModal from "./modals/DisclaimerModal.jsx";
 import TarifOnboardingModal from "./modals/TarifOnboardingModal.jsx";
+import AppErrorScreen from "./components/AppErrorScreen.jsx";
 import CheckoutConsentModal from "./modals/CheckoutConsentModal.jsx";
 import UpsellModal from "./modals/UpsellModal.jsx";
 import AuthConfigMissingScreen from "./modals/AuthConfigMissingScreen.jsx";
@@ -115,6 +116,7 @@ export default function App() {
   const [session, setSession] = useState(null);
   const [authReady, setAuthReady] = useState(false);
   const [dataReady, setDataReady] = useState(false);
+  const [dataLoadError, setDataLoadError] = useState(false);
   const [migrationPrompt, setMigrationPrompt] = useState(null);
   const [migrationBusy, setMigrationBusy] = useState(false);
   const [docs, setDocs] = useState([]);
@@ -374,6 +376,7 @@ export default function App() {
     let cancelled = false;
     (async () => {
       try {
+        setDataLoadError(false);
         const data = await fetchAll(userId);
         if (cancelled) return;
         docsPrevRef.current = data.docs;
@@ -412,7 +415,9 @@ export default function App() {
           });
         }
       } catch (e) {
+        if (cancelled) return;
         console.error("Initial data load failed:", e);
+        setDataLoadError(true);
       }
     })();
     return () => {
@@ -882,18 +887,32 @@ export default function App() {
       "Ganz sicher? Das kann nicht rückgängig gemacht werden."
     );
     if (!second) return;
-    // Delete Supabase-side data first (RLS keeps this scoped to user)
+    // Delete Supabase-side data first (RLS keeps this scoped to user). Bricht
+    // bei einem Fehlschlag komplett ab -- vorher lief der lokale Wipe +
+    // Reload unverändert weiter, auch wenn die Cloud-Löschung fehlschlug, und
+    // der Nutzer glaubte fälschlich an eine vollständige Löschung. Prüft
+    // sowohl geworfene Netzwerkfehler als auch ein .error-Feld im Ergebnis
+    // (Supabase antwortet bei z.B. RLS-Ablehnung mit HTTP 200 + Error-Body,
+    // kein Throw -- ein reines try/catch hätte das übersehen).
     if (userId) {
-      try {
-        await Promise.all([
-          supabase.from("documents").delete().eq("user_id", userId),
-          supabase.from("contacts").delete().eq("user_id", userId),
-          supabase.from("reminders").delete().eq("user_id", userId),
-          supabase.from("events").delete().eq("user_id", userId),
-          supabase.from("saved_templates").delete().eq("user_id", userId),
-        ]);
-      } catch (e) {
-        console.error("Cloud delete failed:", e);
+      const results = await Promise.all([
+        supabase.from("documents").delete().eq("user_id", userId),
+        supabase.from("contacts").delete().eq("user_id", userId),
+        supabase.from("reminders").delete().eq("user_id", userId),
+        supabase.from("events").delete().eq("user_id", userId),
+        supabase.from("saved_templates").delete().eq("user_id", userId),
+      ]).catch((e) => {
+        console.error("Cloud delete failed (network):", e);
+        return null;
+      });
+
+      const failed = results === null || results.some((r) => r.error);
+      if (failed) {
+        results?.forEach((r) => r.error && console.error("Cloud delete failed:", r.error));
+        alert(
+          "Deine Daten in der Cloud konnten nicht vollständig gelöscht werden. Bitte prüfe deine Internetverbindung und versuche es erneut. Es wurde nichts gelöscht."
+        );
+        return;
       }
     }
     try {
@@ -1712,7 +1731,26 @@ export default function App() {
   }
 
   if (!dataReady) {
-    return null;
+    if (dataLoadError) {
+      return (
+        <AppErrorScreen
+          title="Laden fehlgeschlagen"
+          message="Deine Daten konnten nicht geladen werden. Prüfe deine Internetverbindung und versuche es erneut."
+        />
+      );
+    }
+    return (
+      <div className="onboarding">
+        <div className="onboarding-card">
+          <div className="onboarding-logo">B</div>
+          <div className="loading-dots" aria-hidden="true">
+            <span />
+            <span />
+            <span />
+          </div>
+        </div>
+      </div>
+    );
   }
 
   const hasStaleFolders = fileIndex.folders.some((f) => {
