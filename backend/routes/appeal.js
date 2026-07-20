@@ -1,5 +1,6 @@
 const express = require("express");
 const { analyzeAppeal } = require("../services/claude");
+const { consumeQuota } = require("../middleware/quota");
 
 const router = express.Router();
 
@@ -42,6 +43,10 @@ router.post("/", async (req, res, next) => {
     }
 
     const result = await analyzeAppeal({ documentType, summary, deadlineType });
+    // Quota erst nach erfolgreicher Analyse verbuchen. Smart bleibt
+    // unlimitiert (consume_appeal_quota gibt reason:'unlimited' zurück,
+    // ohne etwas zu zählen); Trial ist jetzt gedeckelt statt unlimitiert.
+    await consumeQuota("appeal", req.accessToken);
     res.json(result);
   } catch (err) {
     next(err);

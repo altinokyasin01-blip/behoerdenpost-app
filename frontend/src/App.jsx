@@ -221,6 +221,9 @@ export default function App() {
   // während des Trials (Tag 2/3) wieder erscheinen, nicht nur einmal für
   // immer weggeklickt werden können wie die Tab-Tips.
   const [trialBannerDismissed, setTrialBannerDismissed] = useState(false);
+  // Gleiches Muster: session-lokal, erscheint bei jedem neuen Login wieder,
+  // solange billingStatus.paymentFailed true bleibt.
+  const [paymentFailedBannerDismissed, setPaymentFailedBannerDismissed] = useState(false);
   const [upsellAction, setUpsellAction] = useState(null);
 
   function openUpsell(action) {
@@ -1812,6 +1815,12 @@ export default function App() {
       <main className="main">
         {!FS_SUPPORTED && !browserTipSeen && (
           <TabTip text={BROWSER_TIP_TEXT} onDismiss={dismissBrowserTip} />
+        )}
+        {billingStatus?.paymentFailed && !paymentFailedBannerDismissed && (
+          <TabTip
+            text="Deine letzte Zahlung für Smart ist fehlgeschlagen — du bist vorübergehend auf Basic. Aktualisiere deine Karte in den Einstellungen, um Smart wieder zu aktivieren."
+            onDismiss={() => setPaymentFailedBannerDismissed(true)}
+          />
         )}
         {billingStatus?.tier === "trial" &&
           billingStatus.trialDaysRemaining <= 2 &&

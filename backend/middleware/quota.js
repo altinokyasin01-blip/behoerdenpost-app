@@ -1,4 +1,5 @@
 const { createClient } = require("@supabase/supabase-js");
+const crypto = require("crypto");
 
 // Per-request Supabase client scoped to the caller's own JWT — required so
 // that auth.uid() resolves correctly inside the RPC functions on the
@@ -11,13 +12,31 @@ function supabaseAsUser(accessToken) {
   });
 }
 
+// Deterministic content hash used as the idempotency key for consumeQuota
+// (scan/template). Computed server-side from the request content itself
+// (file bytes / QR text / template payload) — no frontend changes needed,
+// and a retry of the exact same content naturally produces the same hash.
+function hashContent(input) {
+  return crypto.createHash("sha256").update(input).digest("hex");
+}
+
+const HAS_QUOTA_RPC = {
+  template: "has_template_quota",
+  appeal: "has_appeal_quota",
+  scan: "has_scan_quota",
+};
+const CONSUME_QUOTA_RPC = {
+  template: "consume_template_credit",
+  appeal: "consume_appeal_quota",
+  scan: "consume_scan_credit",
+};
+
 // READ-ONLY quota peek — returns whether the caller has quota available,
 // without consuming anything. Used both by the checkQuota middleware and
 // directly inside routes that only need to gate a subset of requests (e.g.
 // /api/qr, where a deterministic GiroCode needs no quota at all).
 async function hasQuota(action, accessToken) {
-  const rpcName =
-    action === "template" ? "has_template_quota" : "has_scan_quota";
+  const rpcName = HAS_QUOTA_RPC[action] || HAS_QUOTA_RPC.scan;
   const supabase = supabaseAsUser(accessToken);
   const { data, error } = await supabase.rpc(rpcName);
   if (error) throw error;
@@ -53,12 +72,19 @@ function checkQuota(action) {
 // checkQuota already guaranteed availability for the common sequential
 // case; a rare concurrent race could make this return allowed:false after
 // the fact, which we just log (minor over-grant, never an over-charge).
-async function consumeQuota(action, accessToken) {
-  const rpcName =
-    action === "template" ? "consume_template_credit" : "consume_scan_credit";
+//
+// requestHash (optional, scan/template only): a server-computed content
+// hash of the request (file bytes / QR text / template payload) passed
+// through to the RPC as p_request_hash. A client retry of the SAME content
+// within a short window is recognized as a duplicate and NOT consumed
+// again — protects against double Credit-Abzug when a network timeout or
+// double-submit causes the same logical action to reach the backend twice.
+async function consumeQuota(action, accessToken, requestHash) {
+  const rpcName = CONSUME_QUOTA_RPC[action] || CONSUME_QUOTA_RPC.scan;
   try {
     const supabase = supabaseAsUser(accessToken);
-    const { data, error } = await supabase.rpc(rpcName);
+    const params = action === "appeal" ? {} : { p_request_hash: requestHash || null };
+    const { data, error } = await supabase.rpc(rpcName, params);
     if (error) {
       console.error(`consumeQuota(${action}) RPC error:`, error.message);
     } else if (!data?.allowed) {
@@ -94,4 +120,4 @@ function requireTier(tier) {
   };
 }
 
-module.exports = { checkQuota, hasQuota, consumeQuota, requireTier, supabaseAsUser };
+module.exports = { checkQuota, hasQuota, consumeQuota, requireTier, supabaseAsUser, hashContent };

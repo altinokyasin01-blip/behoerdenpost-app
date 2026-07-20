@@ -1,6 +1,6 @@
 const express = require("express");
 const { generateTemplate } = require("../services/claude");
-const { consumeQuota } = require("../middleware/quota");
+const { consumeQuota, hashContent } = require("../middleware/quota");
 
 const router = express.Router();
 
@@ -89,7 +89,11 @@ router.post("/", async (req, res, next) => {
       linkedDoc: cleanLinkedDoc,
     });
     // Quota erst nach erfolgreicher Vorlagen-Generierung verbuchen.
-    await consumeQuota("template", req.accessToken);
+    // Content-Hash der bereinigten Nutzlast als Idempotency-Key.
+    const requestHash = hashContent(
+      JSON.stringify({ templateType, context, senderName, recipient: cleanRecipient, linkedDoc: cleanLinkedDoc })
+    );
+    await consumeQuota("template", req.accessToken, requestHash);
     res.json(result);
   } catch (err) {
     next(err);

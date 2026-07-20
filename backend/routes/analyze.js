@@ -1,7 +1,7 @@
 const express = require("express");
 const multer = require("multer");
 const { analyzeDocument } = require("../services/claude");
-const { consumeQuota } = require("../middleware/quota");
+const { consumeQuota, hashContent } = require("../middleware/quota");
 
 const router = express.Router();
 
@@ -50,7 +50,10 @@ router.post("/", upload.single("document"), handleUploadErrors, async (req, res,
     const result = await analyzeDocument(base64, req.file.mimetype);
     // Quota erst nach erfolgreichem Claude-Call verbuchen -- ein Fehlschlag
     // oben (throw) erreicht diese Zeile nicht, kostet also keine Quota.
-    await consumeQuota("scan", req.accessToken);
+    // Content-Hash der Datei als Idempotency-Key: ein Client-Retry (Timeout,
+    // Doppelklick) mit denselben Bytes wird innerhalb eines kurzen Fensters
+    // als dieselbe Aktion erkannt und nicht doppelt verbucht.
+    await consumeQuota("scan", req.accessToken, hashContent(req.file.buffer));
     res.json(result);
   } catch (err) {
     next(err);

@@ -12,6 +12,30 @@ const requireAuth = require("./middleware/requireAuth");
 const { ipRateLimit, userRateLimit } = require("./middleware/rateLimit");
 const { checkQuota, requireTier } = require("./middleware/quota");
 
+// Harter Startup-Check statt lazy Fehlern beim ersten Request. Vorher
+// startete der Server klaglos und beantwortete /api/health mit "ok", selbst
+// wenn z.B. ANTHROPIC_API_KEY fehlte -- Railway hätte das Deploy als
+// erfolgreich gewertet, der eigentliche Fehler wäre erst beim ersten
+// echten Scan/Checkout/Webhook sichtbar geworden. FRONTEND_URL fehlend war
+// besonders tückisch: keine Exception, nur eine leere CORS-Allowlist, die
+// jede Browser-Anfrage lautlos blockiert.
+const REQUIRED_ENV_VARS = [
+  "SUPABASE_URL",
+  "SUPABASE_ANON_KEY",
+  "ANTHROPIC_API_KEY",
+  "STRIPE_SECRET_KEY",
+  "STRIPE_WEBHOOK_SECRET",
+  "STRIPE_WEBHOOK_RPC_SECRET",
+  "FRONTEND_URL",
+];
+const missingEnvVars = REQUIRED_ENV_VARS.filter((name) => !process.env[name]);
+if (missingEnvVars.length > 0) {
+  console.error(
+    `FATAL: fehlende Pflicht-Env-Variablen: ${missingEnvVars.join(", ")}`
+  );
+  process.exit(1);
+}
+
 const app = express();
 const PORT = process.env.PORT || 3001;
 
@@ -77,6 +101,7 @@ app.use(
   requireAuth,
   userRateLimit,
   requireTier("smart"),
+  checkQuota("appeal"),
   appealRouter
 );
 // Kein checkQuota-Middleware hier: /api/qr gated INNERHALB der Route, damit

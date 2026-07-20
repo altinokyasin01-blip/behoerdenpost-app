@@ -1,7 +1,7 @@
 const express = require("express");
 const { analyzeQrContent } = require("../services/claude");
 const { parseGiroCode } = require("../services/giroCode");
-const { hasQuota, consumeQuota } = require("../middleware/quota");
+const { hasQuota, consumeQuota, hashContent } = require("../middleware/quota");
 
 const router = express.Router();
 
@@ -94,7 +94,7 @@ router.post("/", async (req, res, next) => {
       return res.status(402).json({ error: "quota_exceeded" });
     }
     const result = await analyzeQrContent(trimmed);
-    await consumeQuota("scan", req.accessToken);
+    await consumeQuota("scan", req.accessToken, hashContent(trimmed));
 
     res.json({ ...result, qrCodes: [trimmed] });
   } catch (err) {
