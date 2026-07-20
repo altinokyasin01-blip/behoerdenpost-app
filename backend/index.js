@@ -7,6 +7,7 @@ const appealRouter = require("./routes/appeal");
 const qrRouter = require("./routes/qr");
 const templateRouter = require("./routes/template");
 const billingRouter = require("./routes/billing");
+const accountRouter = require("./routes/account");
 const stripeWebhookHandler = require("./routes/stripeWebhook");
 const requireAuth = require("./middleware/requireAuth");
 const { ipRateLimit, userRateLimit } = require("./middleware/rateLimit");
@@ -117,6 +118,7 @@ app.use(
   templateRouter
 );
 app.use("/api/billing", ipRateLimit, requireAuth, billingRouter);
+app.use("/api/account", ipRateLimit, requireAuth, userRateLimit, accountRouter);
 
 app.use((err, _req, res, _next) => {
   console.error(err);

@@ -104,6 +104,7 @@ import DisclaimerModal from "./modals/DisclaimerModal.jsx";
 import TarifOnboardingModal from "./modals/TarifOnboardingModal.jsx";
 import AppErrorScreen from "./components/AppErrorScreen.jsx";
 import CheckoutConsentModal from "./modals/CheckoutConsentModal.jsx";
+import DeleteAccountModal from "./modals/DeleteAccountModal.jsx";
 import UpsellModal from "./modals/UpsellModal.jsx";
 import AuthConfigMissingScreen from "./modals/AuthConfigMissingScreen.jsx";
 import MigrationPromptModal from "./modals/MigrationPromptModal.jsx";
@@ -208,6 +209,7 @@ export default function App() {
 
   const [billingStatus, setBillingStatus] = useState(null);
   const [checkoutConsentType, setCheckoutConsentType] = useState(null);
+  const [deleteAccountModalOpen, setDeleteAccountModalOpen] = useState(false);
   // Query-Param aus dem Stripe-Checkout-Redirect wird nur beim allerersten
   // Render gelesen -- die URL wird gleich danach bereinigt (siehe Effekt
   // unten), ein erneuter Read nach dem Cleanup soll nichts mehr finden.
@@ -881,6 +883,30 @@ export default function App() {
     setTimeout(() => URL.revokeObjectURL(url), 5000);
   }
 
+  // Gemeinsamer Tail von deleteAllData und deleteAccount: lokalen State
+  // (localStorage, IndexedDB, Session) wegräumen und neu laden. Läuft erst,
+  // NACHDEM die jeweilige Server-Löschung bereits bestätigt erfolgreich war.
+  async function wipeLocalStateAndReload() {
+    try {
+      localStorage.clear();
+    } catch {
+      // ignore
+    }
+    try {
+      if (typeof indexedDB !== "undefined") {
+        indexedDB.deleteDatabase(IDB_NAME);
+      }
+    } catch {
+      // ignore
+    }
+    try {
+      if (session) await supabase.auth.signOut();
+    } catch {
+      // ignore
+    }
+    location.reload();
+  }
+
   async function deleteAllData() {
     const first = confirm(
       "Wirklich ALLE Daten löschen? Dokumente, Kontakte, Erinnerungen, Termine und alle Einstellungen gehen verloren."
@@ -918,24 +944,43 @@ export default function App() {
         return;
       }
     }
-    try {
-      localStorage.clear();
-    } catch {
-      // ignore
+    await wipeLocalStateAndReload();
+  }
+
+  // Ruft die Backend-Route auf, die den kompletten Account löscht (Stripe-
+  // Kündigung, Daten, profiles-Zeile, zuletzt der Auth-Account selbst --
+  // Reihenfolge/Fehlerbehandlung siehe backend/routes/account.js). Wirft bei
+  // jedem Fehlschlag einen Error mit .step/.stripeCancelled, den
+  // DeleteAccountModal auffängt und passend anzeigt -- kein stilles
+  // "erfolgreich" bei einem Teilfehlschlag.
+  async function deleteAccount() {
+    const res = await authFetch(
+      `${API_BASE}/api/account`,
+      { method: "DELETE" },
+      session.access_token
+    );
+    const body = await res.json().catch(() => ({}));
+
+    if (res.status === 207) {
+      // Daten/Abo/Profil sind bereits serverseitig weg, nur die
+      // Auth-Account-Löschung selbst ist fehlgeschlagen (seltener
+      // Sonderfall). Blockierender Hinweis VOR dem Reload, damit der
+      // Nutzer ihn sicher sieht, statt sofort weggeleitet zu werden.
+      alert(
+        "Deine Daten und dein Abo wurden gelöscht. Der Login-Zugang konnte aus technischen Gründen nicht entfernt werden — bitte kontaktiere den Support unter kontakt@meinbuero.app, damit wir das abschließen."
+      );
+      await wipeLocalStateAndReload();
+      return;
     }
-    try {
-      if (typeof indexedDB !== "undefined") {
-        indexedDB.deleteDatabase(IDB_NAME);
-      }
-    } catch {
-      // ignore
+
+    if (!res.ok) {
+      const err = new Error(body.error || "delete_account_failed");
+      err.step = body.step;
+      err.stripeCancelled = body.stripeCancelled;
+      throw err;
     }
-    try {
-      if (session) await supabase.auth.signOut();
-    } catch {
-      // ignore
-    }
-    location.reload();
+
+    await wipeLocalStateAndReload();
   }
 
   useEffect(() => {
@@ -1937,6 +1982,7 @@ export default function App() {
             onRequestNotif={requestNotifPermission}
             onExportData={exportAllData}
             onDeleteAll={deleteAllData}
+            onDeleteAccount={() => setDeleteAccountModalOpen(true)}
             googleConnected={googleConnected}
             googleBusy={googleBusy}
             googleAutoExport={googleAutoExport}
@@ -2212,6 +2258,13 @@ export default function App() {
           type={checkoutConsentType}
           onConfirm={() => performCheckout(checkoutConsentType)}
           onClose={() => setCheckoutConsentType(null)}
+        />
+      )}
+
+      {deleteAccountModalOpen && (
+        <DeleteAccountModal
+          onConfirm={deleteAccount}
+          onClose={() => setDeleteAccountModalOpen(false)}
         />
       )}
 

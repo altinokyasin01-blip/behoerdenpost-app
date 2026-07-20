@@ -25,6 +25,7 @@ export default function SettingsView({
   onRequestNotif,
   onExportData,
   onDeleteAll,
+  onDeleteAccount,
   googleConnected,
   googleBusy,
   googleAutoExport,
@@ -159,6 +160,35 @@ export default function SettingsView({
               type="button"
               className="btn-secondary btn-danger btn-primary-sm"
               onClick={onDeleteAll}
+            >
+              Löschen
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {/* KONTO ENDGÜLTIG LÖSCHEN — bewusst eine eigene, visuell abgesetzte
+          Sektion statt in "Alle Daten löschen" integriert: unterschiedliche
+          Nutzerabsicht (Zurücksetzen vs. Account inkl. Login unwiderruflich
+          entfernen). */}
+      <section className="settings-section">
+        <h2 className="settings-section-title settings-section-title-danger">
+          Gefahrenzone
+        </h2>
+        <div className="settings-group settings-group-danger">
+          <div className="settings-row">
+            <div className="settings-row-body">
+              <div className="settings-row-label">Konto endgültig löschen</div>
+              <div className="settings-row-sub">
+                Löscht deinen Account vollständig, inkl. Login und einem
+                aktiven Smart-Abo (wird zuerst gekündigt). Danach ist kein
+                Zugriff mehr möglich.
+              </div>
+            </div>
+            <button
+              type="button"
+              className="btn-secondary btn-danger btn-primary-sm"
+              onClick={onDeleteAccount}
             >
               Löschen
             </button>

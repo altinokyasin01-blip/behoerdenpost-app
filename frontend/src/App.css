@@ -2173,6 +2173,37 @@ input {
   border-color: var(--red);
 }
 
+/* ---- Danger zone (Konto-Löschung) — visuell klar abgesetzt von den
+   übrigen Settings-Gruppen, damit die endgültigste Aktion nicht wie eine
+   normale Einstellung wirkt. ---- */
+.settings-section-title-danger {
+  color: var(--red);
+}
+
+.settings-group-danger {
+  background: var(--card);
+  border: 1px solid var(--red);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+/* Solide rote Primary-Variante -- .btn-primary + .btn-danger allein würde
+   nur die Textfarbe auf dem normalen Akzent-Hintergrund ändern, nicht klar
+   als gefährlichste verfügbare Aktion wirken. */
+.btn-primary-danger {
+  background: var(--red);
+  color: #fff;
+}
+
+.btn-primary-danger:hover {
+  filter: brightness(0.92);
+}
+
+.btn-primary-danger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* ---- Detail actions stack ---- */
 .detail-actions-stack {
   display: flex;
