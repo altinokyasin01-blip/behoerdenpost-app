@@ -91,13 +91,16 @@ router.delete("/", async (req, res) => {
       return res.status(500).json({ error: "delete_data_failed", step: "delete_data", stripeCancelled });
     }
 
-    // Schritt 3: profiles-Zeile löschen.
-    const { data: profileDelete, error: profileDeleteError } = await supabase.rpc("delete_own_profile");
-    if (profileDeleteError || !profileDelete?.deleted) {
-      console.error(
-        "Account-Löschung: profiles-Löschung fehlgeschlagen:",
-        profileDeleteError?.message || "deleted:false"
-      );
+    // Schritt 3: profiles-Zeile löschen. `deleted:false` OHNE einen echten
+    // RPC-Fehler heißt nur "Zeile existierte schon nicht" -- das ist bereits
+    // der gewünschte Endzustand, kein Fehlschlag. Wichtig für Wiederholungs-
+    // versuche: schlägt Schritt 4 (Auth-Löschung) fehl, ist die profiles-
+    // Zeile zu diesem Zeitpunkt schon weg -- ein erneuter Versuch desselben
+    // Nutzers muss hier durchlaufen können, statt für immer an Schritt 3
+    // hängen zu bleiben, nur weil nichts mehr zum Löschen da ist.
+    const { error: profileDeleteError } = await supabase.rpc("delete_own_profile");
+    if (profileDeleteError) {
+      console.error("Account-Löschung: profiles-Löschung fehlgeschlagen:", profileDeleteError.message);
       return res.status(500).json({ error: "delete_profile_failed", step: "delete_profile", stripeCancelled });
     }
 
